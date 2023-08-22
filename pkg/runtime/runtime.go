@@ -18,11 +18,12 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/Masterminds/semver/v3"
+
 	"github.com/labring/sealos/pkg/client-go/kubernetes"
 	"github.com/labring/sealos/pkg/ssh"
 	v2 "github.com/labring/sealos/pkg/types/v1beta1"
 	"github.com/labring/sealos/pkg/utils/logger"
-	"github.com/labring/sealos/pkg/utils/versionutil"
 	"github.com/labring/sealos/pkg/utils/yaml"
 )
 
@@ -56,7 +57,7 @@ func (k *KubeadmRuntime) Init() error {
 	return k.pipeline("init", pipeline)
 }
 
-func (k *KubeadmRuntime) GetKubeadmConfig() ([]byte, error) {
+func (k *KubeadmRuntime) GetConfig() ([]byte, error) {
 	k.KubeadmConfig = k.ClusterFileKubeConfig
 	if err := k.ConvertInitConfigConversion(); err != nil {
 		return nil, err
@@ -79,53 +80,52 @@ func (k *KubeadmRuntime) GetKubeadmConfig() ([]byte, error) {
 type Interface interface {
 	Init() error
 	Reset() error
-	JoinNodes(newNodesIPList []string) error
-	DeleteNodes(nodeIPList []string) error
-	JoinMasters(newMastersIPList []string) error
-	DeleteMasters(mastersIPList []string) error
+	ScaleUp(newMasterIPList []string, newNodeIPList []string) error
+	ScaleDown(deleteMastersIPList []string, deleteNodesIPList []string) error
 	SyncNodeIPVS(mastersIPList, nodeIPList []string) error
+	Upgrade(version string) error
+	GetConfig() ([]byte, error)
+
 	UpdateCert(certs []string) error
-	UpgradeCluster(version string) error
-	GetKubeadmConfig() ([]byte, error)
 }
 
 func (k *KubeadmRuntime) Reset() error {
 	logger.Info("start to delete Cluster: master %s, node %s", k.getMasterIPList(), k.getNodeIPList())
 	return k.reset()
 }
-
-func (k *KubeadmRuntime) JoinNodes(newNodesIPList []string) error {
-	if len(newNodesIPList) != 0 {
-		logger.Info("%s will be added as worker", newNodesIPList)
+func (k *KubeadmRuntime) ScaleUp(newMasterIPList []string, newNodeIPList []string) error {
+	if len(newMasterIPList) != 0 {
+		logger.Info("%s will be added as master", newMasterIPList)
+		if err := k.joinMasters(newMasterIPList); err != nil {
+			return err
+		}
 	}
-	if err := k.joinNodes(newNodesIPList); err != nil {
-		return err
+	if len(newNodeIPList) != 0 {
+		logger.Info("%s will be added as worker", newNodeIPList)
+		if err := k.joinNodes(newNodeIPList); err != nil {
+			return err
+		}
+		return k.copyNodeKubeConfig(newNodeIPList)
 	}
-	return k.copyNodeKubeConfig(newNodesIPList)
-}
-func (k *KubeadmRuntime) DeleteNodes(nodesIPList []string) error {
-	if len(nodesIPList) != 0 {
-		logger.Info("worker %s will be deleted", nodesIPList)
-	}
-	return k.deleteNodes(nodesIPList)
-}
-
-func (k *KubeadmRuntime) JoinMasters(newMastersIPList []string) error {
-	if len(newMastersIPList) != 0 {
-		logger.Info("%s will be added as master", newMastersIPList)
-	}
-	return k.joinMasters(newMastersIPList)
+	return nil
 }
 
-func (k *KubeadmRuntime) DeleteMasters(mastersIPList []string) error {
-	if len(mastersIPList) != 0 {
-		logger.Info("master %s will be deleted", mastersIPList)
+func (k *KubeadmRuntime) ScaleDown(deleteMastersIPList []string, deleteNodesIPList []string) error {
+	if len(deleteMastersIPList) != 0 {
+		logger.Info("master %s will be deleted", deleteMastersIPList)
+		if err := k.deleteMasters(deleteMastersIPList); err != nil {
+			return err
+		}
 	}
-	return k.deleteMasters(mastersIPList)
+	if len(deleteNodesIPList) != 0 {
+		logger.Info("worker %s will be deleted", deleteNodesIPList)
+		return k.deleteNodes(deleteNodesIPList)
+	}
+	return nil
 }
 
 func newKubeadmRuntime(cluster *v2.Cluster, kubeadm *KubeadmConfig) (Interface, error) {
-	sshClient, _ := ssh.NewSSHByCluster(cluster, true)
+	sshClient := ssh.NewSSHByCluster(cluster, true)
 	k := &KubeadmRuntime{
 		Mutex:         &sync.Mutex{},
 		Cluster:       cluster,
@@ -167,20 +167,28 @@ func (k *KubeadmRuntime) Validate() error {
 	return nil
 }
 
-func (k *KubeadmRuntime) UpgradeCluster(version string) error {
-	curversion := k.getKubeVersionFromImage()
-	if curversion == version {
-		logger.Info("The cluster version has not changed")
-		return nil
-	} else if versionutil.Compare(version, curversion) {
-		if err := versionutil.UpgradeVersionLimit(curversion, version); err != nil {
-			return err
-		}
-		logger.Info("cluster vesion: %s will be upgraded into %s.", curversion, version)
-		return k.upgradeCluster(version)
-	} else if versionutil.Compare(curversion, version) {
-		logger.Info("new cluster version %s behind the current version %s", version, curversion)
+func (k *KubeadmRuntime) Upgrade(version string) error {
+	currVersion := k.getKubeVersionFromImage()
+
+	v0, err := semver.NewVersion(currVersion)
+	if err != nil {
+		return err
+	}
+	v1, err := semver.NewVersion(version)
+	if err != nil {
+		return err
+	}
+	if v0.Equal(v1) {
+		logger.Info("skip upgrade because of same version")
 		return nil
 	}
-	return fmt.Errorf("verion format error")
+
+	if v0.GreaterThan(v1) {
+		return fmt.Errorf("cannot apply an older version %s than %s", version, currVersion)
+	}
+	if v0.Minor()+1 < v1.Minor() {
+		return fmt.Errorf("cannot be upgraded across more than one major releases, %s -> %s", currVersion, version)
+	}
+
+	return k.upgradeCluster(version)
 }
