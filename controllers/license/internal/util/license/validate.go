@@ -11,7 +11,7 @@ import (
 func ParseLicenseToken(license *licensev1.License) (*jwt.Token, error) {
 	token, err := jwt.Parse(license.Spec.Token,
 		func(token *jwt.Token) (interface{}, error) {
-			decodeKey, err := base64.StdEncoding.DecodeString(key.DecodeKey)
+			decodeKey, err := base64.StdEncoding.DecodeString(key.EncryptionKey)
 			if err != nil {
 				return nil, err
 			}

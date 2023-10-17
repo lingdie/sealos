@@ -87,6 +87,7 @@ func (r *LicenseReconciler) reconcile(ctx context.Context, license *licensev1.Li
 	// if license is invalid, update license status to failed
 	if !valid {
 		r.Logger.V(1).Info("license is invalid", "license", license.Namespace+"/"+license.Name)
+		// TODO mv to a function
 		license.Status.Phase = licensev1.LicenseStatusPhaseFailed
 		_ = r.Status().Update(ctx, license)
 		return ctrl.Result{}, nil
@@ -106,6 +107,7 @@ func (r *LicenseReconciler) reconcile(ctx context.Context, license *licensev1.Li
 		return ctrl.Result{}, nil
 	}
 
+	// TODO mv to active function
 	switch license.Spec.Type {
 	case licensev1.AccountLicenseType:
 		if err = accountutil.Recharge(ctx, r.Client, license); err != nil {

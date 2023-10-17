@@ -36,6 +36,7 @@ func Recharge(ctx context.Context, client client.Client, license *licensev1.Lice
 		return err
 	}
 
+	// TODO test this
 	payload, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
 		return errors.New("cannot convert value of type to jwt.MapClaims")
