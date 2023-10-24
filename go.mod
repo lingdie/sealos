@@ -41,13 +41,13 @@ require (
 	golang.org/x/sync v0.4.0
 	golang.org/x/sys v0.12.0
 	golang.org/x/term v0.11.0
-	google.golang.org/grpc v1.55.0
+	google.golang.org/grpc v1.57.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v2 v2.4.0
 	helm.sh/helm/v3 v3.11.2
-	k8s.io/api v0.27.4
-	k8s.io/apimachinery v0.27.4
-	k8s.io/client-go v0.27.4
+	k8s.io/api v0.28.1
+	k8s.io/apimachinery v0.28.1
+	k8s.io/client-go v0.28.1
 	k8s.io/kube-proxy v0.25.6
 	k8s.io/kubectl v0.26.0
 	k8s.io/kubelet v0.25.6
@@ -121,6 +121,7 @@ require (
 	github.com/gomodule/redigo v1.8.2 // indirect
 	github.com/google/btree v1.0.1 // indirect
 	github.com/google/gnostic v0.6.9 // indirect
+	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/google/go-cmp v0.5.9 // indirect
 	github.com/google/go-containerregistry v0.15.2 // indirect
 	github.com/google/go-intervals v0.0.2 // indirect
@@ -200,7 +201,7 @@ require (
 	github.com/theupdateframework/go-tuf v0.5.2 // indirect
 	github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399 // indirect
 	github.com/ulikunitz/xz v0.5.11 // indirect
-	github.com/vbatts/tar-split v0.11.3 // indirect
+	github.com/vbatts/tar-split v0.11.5 // indirect
 	github.com/vbauerster/mpb/v8 v8.4.0 // indirect
 	github.com/vishvananda/netlink v1.2.1-beta.2 // indirect
 	github.com/vishvananda/netns v0.0.4 // indirect
@@ -224,7 +225,7 @@ require (
 	golang.org/x/tools v0.9.3 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
-	google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20230525234030-28d5490b6b19 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
 	gopkg.in/go-jose/go-jose.v2 v2.6.1 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
@@ -238,7 +239,7 @@ require (
 	k8s.io/component-base v0.28.1 // indirect
 	k8s.io/component-helpers v0.25.6 // indirect
 	k8s.io/klog/v2 v2.100.1 // indirect
-	k8s.io/kube-openapi v0.0.0-20221012153701-172d655c2280 // indirect
+	k8s.io/kube-openapi v0.0.0-20230717233707-2695361300d9 // indirect
 	oras.land/oras-go v1.2.3 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
 	sigs.k8s.io/kustomize/api v0.12.1 // indirect
