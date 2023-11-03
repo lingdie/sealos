@@ -20,7 +20,7 @@ jobs:
     uses: ./.github/workflows/controllers.yml
     with:
       push_image: true
-      push_image_tag: ${{ env.TAG }}
+      push_image_tag: ${{ github.event.release.tag_name }}
 
   release-frontends:
     needs:
@@ -28,7 +28,7 @@ jobs:
     uses: ./.github/workflows/frontend.yml
     with:
       push_image: true
-      push_image_tag: ${{ env.TAG }}
+      push_image_tag: ${{ github.event.release.tag_name }}
 
   release-service:
     needs:
@@ -36,7 +36,7 @@ jobs:
     uses: ./.github/workflows/services.yml
     with:
       push_image: true
-      push_image_tag: ${{ env.TAG }}
+      push_image_tag: ${{ github.event.release.tag_name }}
 
   release-cloud:
     needs:
@@ -47,5 +47,5 @@ jobs:
     uses: ./.github/workflows/cloud.yml
     with:
       push_image: true
-      push_image_tag: ${{ env.TAG }}
-      build_from: ${{ env.TAG }}
+      push_image_tag: ${{ github.event.release.tag_name }}
+      build_from: ${{ github.event.release.tag_name }}
