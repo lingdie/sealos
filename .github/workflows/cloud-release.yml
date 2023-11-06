@@ -15,20 +15,18 @@ jobs:
     uses: ./.github/workflows/import-save-sealos.yml
 
   release-controllers:
-    needs:
-      - save-sealos
     uses: ./.github/workflows/controllers.yml
     with:
       push_image: true
       push_image_tag: ${{ env.TAG }}
+    secrets: inherit
 
   release-frontends:
-    needs:
-      - save-sealos
     uses: ./.github/workflows/frontend.yml
     with:
       push_image: true
       push_image_tag: ${{ env.TAG }}
+    secrets: inherit
 
   release-service:
     needs:
@@ -37,6 +35,7 @@ jobs:
     with:
       push_image: true
       push_image_tag: ${{ env.TAG }}
+    secrets: inherit
 
   release-cloud:
     needs:
@@ -49,3 +48,4 @@ jobs:
       push_image: true
       push_image_tag: ${{ env.TAG }}
       build_from: ${{ env.TAG }}
+    secrets: inherit
