@@ -48,4 +48,5 @@ spec:
   tls:
     - hosts:
         - terminal.{{ .cloudDomain }}
-      secretName: {{ .certSecretName }}
+      {{ if .certSecretName }}secretName: {{ .certSecretName }}{{ end }}
+

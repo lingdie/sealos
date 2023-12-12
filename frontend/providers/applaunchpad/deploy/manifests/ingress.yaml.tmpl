@@ -42,4 +42,4 @@ spec:
   tls:
     - hosts:
         - applaunchpad.{{ .cloudDomain }}
-      secretName: {{ .certSecretName }}
+      {{ if .certSecretName }}secretName: {{ .certSecretName }}{{ end }}

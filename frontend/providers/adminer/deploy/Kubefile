@@ -5,7 +5,7 @@ USER 65532:65532
 COPY registry registry
 COPY manifests manifests
 
-ENV certSecretName="wildcard-cert"
+ENV certSecretName=""
 ENV cloudDomain="cloud.example.com"
 
 CMD ["kubectl apply -f manifests"]

@@ -28,4 +28,4 @@ spec:
   tls:
     - hosts:
         - dbprovider.{{ .cloudDomain }}
-      secretName: {{ .certSecretName }}
+      {{ if .certSecretName }}secretName: {{ .certSecretName }}{{ end }}

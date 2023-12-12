@@ -34,4 +34,4 @@ spec:
   tls:
     - hosts:
         - template.{{ .cloudDomain }}
-      secretName: wildcard-cert
+      {{ if .certSecretName }}secretName: {{ .certSecretName }}{{ end }}

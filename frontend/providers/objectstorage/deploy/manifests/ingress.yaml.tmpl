@@ -48,4 +48,4 @@ spec:
   tls:
     - hosts:
         - objectstorage.{{ .cloudDomain }}
-      secretName: {{ .certSecretName }}
+      {{ if .certSecretName }}secretName: {{ .certSecretName }}{{ end }}
