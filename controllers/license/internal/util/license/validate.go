@@ -16,6 +16,7 @@ package license
 
 import (
 	"encoding/base64"
+	"fmt"
 
 	"github.com/golang-jwt/jwt/v4"
 
@@ -33,6 +34,7 @@ func ParseLicenseToken(license *licensev1.License) (*jwt.Token, error) {
 			if err != nil {
 				return nil, err
 			}
+			fmt.Print(decodeKey)
 			publicKey, err := crypto.ParseRSAPublicKeyFromPEM(string(decodeKey))
 			if err != nil {
 				return nil, err
