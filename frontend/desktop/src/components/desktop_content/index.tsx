@@ -22,6 +22,7 @@ import styles from './index.module.scss';
 import Monitor from './monitor';
 import SearchBox from './searchBox';
 import Warn from './warn';
+import NeedToMerge from '../account/AccountCenter/mergeUser/NeedToMergeModal';
 
 const AppDock = dynamic(() => import('../AppDock'), { ssr: false });
 const FloatButton = dynamic(() => import('@/components/floating_button'), { ssr: false });
@@ -138,7 +139,7 @@ export default function Desktop(props: any) {
     <Box
       id="desktop"
       className={styles.desktop}
-      backgroundImage={`url(${backgroundImage || '/images/bg-blue.jpg'})`}
+      backgroundImage={`url(${backgroundImage || '/images/bg-blue.svg'})`}
       backgroundRepeat={'no-repeat'}
       backgroundSize={'cover'}
       position={'relative'}
@@ -240,6 +241,8 @@ export default function Desktop(props: any) {
           </AppWindow>
         );
       })}
+      {/* modal */}
+      <NeedToMerge />
     </Box>
   );
 }
