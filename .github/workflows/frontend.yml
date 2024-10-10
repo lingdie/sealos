@@ -54,6 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
+      has_changes: ${{ steps.set-matrix.outputs.has_changes }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -78,9 +79,16 @@ jobs:
           echo "matrix=${MODULES}"
           echo "matrix=${MODULES}" >> $GITHUB_OUTPUT
 
+          if [[ "${MODULES}" == "[]" ]]; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          fi
+
   image-build:
     needs:
       - determine-changes
+    if: needs.determine-changes.outputs.has_changes == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
