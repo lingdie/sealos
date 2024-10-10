@@ -68,12 +68,12 @@ jobs:
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" || "${{ github.event_name }}" == "workflow_call" ]]; then
             MODULES=$(find frontend -maxdepth 2 \( -name desktop -o -path '*/providers/*' \) -type d | sed 's|frontend/||' | jq -R -s -c 'split("\n")[:-1]')
-          elif echo '${{ steps.changed-files.outputs.all_changed_files }}' | grep -q '^frontend/package/'; then
+          elif echo '${{ steps.changed-files.outputs.all_modified_files }}' | grep -q '^frontend/package/'; then
             MODULES=$(find frontend -maxdepth 2 \( -name desktop -o -path '*/providers/*' \) -type d | sed 's|frontend/||' | jq -R -s -c 'split("\n")[:-1]')
           else
             echo 'changed files'
-            echo '${{ steps.changed-files.outputs.all_changed_files }}'
-            MODULES=$(echo '${{ steps.changed-files.outputs.all_changed_files }}' | tr ' ' '\n' | grep -E '^frontend/(desktop|providers/[^/]+)/' | sed 's|frontend/||' | awk -F'/' '{if($1=="desktop") print $1; else if($1=="providers") print $1"/"$2}' | sort -u | jq -R -s -c 'split("\n")[:-1]')
+            echo '${{ steps.changed-files.outputs.all_modified_files }}'
+            MODULES=$(echo '${{ steps.changed-files.outputs.all_modified_files }}' | tr ' ' '\n' | grep -E '^frontend/(desktop|providers/[^/]+)/' | sed 's|frontend/||' | awk -F'/' '{if($1=="desktop") print $1; else if($1=="providers") print $1"/"$2}' | sort -u | jq -R -s -c 'split("\n")[:-1]')
           fi
           echo "matrix=${MODULES}"
           echo "matrix=${MODULES}" >> $GITHUB_OUTPUT
