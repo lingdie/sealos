@@ -123,20 +123,26 @@ func (r *DevboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	logger.Info("sync secret success")
 	r.Recorder.Eventf(devbox, corev1.EventTypeNormal, "Sync secret success", "Sync secret success")
 
-	// create service if network type is NodePort
-	if devbox.Spec.NetworkSpec.Type == devboxv1alpha1.NetworkTypeNodePort {
-		logger.Info("syncing service")
-		if err := r.Get(ctx, req.NamespacedName, devbox); err != nil {
-			return ctrl.Result{}, err
-		}
-		if err := r.syncService(ctx, devbox, recLabels); err != nil {
-			logger.Error(err, "sync service failed")
-			r.Recorder.Eventf(devbox, corev1.EventTypeWarning, "Sync service failed", "%v", err)
-			return ctrl.Result{}, err
-		}
-		logger.Info("sync service success")
-		r.Recorder.Eventf(devbox, corev1.EventTypeNormal, "Sync service success", "Sync service success")
+	logger.Info("syncing cluster ip service")
+	if err := r.Get(ctx, req.NamespacedName, devbox); err != nil {
+		return ctrl.Result{}, err
 	}
+	if err := r.syncClusterIPService(ctx, devbox, recLabels); err != nil {
+		logger.Error(err, "sync service failed")
+		r.Recorder.Eventf(devbox, corev1.EventTypeWarning, "Sync service failed", "%v", err)
+		return ctrl.Result{}, err
+	}
+	logger.Info("sync cluster ip service success")
+	r.Recorder.Eventf(devbox, corev1.EventTypeNormal, "Sync cluster ip service success", "Sync cluster ip service success")
+
+	logger.Info("syncing network")
+	if err := r.syncNetwork(ctx, devbox, recLabels); err != nil {
+		logger.Error(err, "sync network failed")
+		r.Recorder.Eventf(devbox, corev1.EventTypeWarning, "Sync network failed", "%v", err)
+		return ctrl.Result{}, err
+	}
+	logger.Info("sync network success")
+	r.Recorder.Eventf(devbox, corev1.EventTypeNormal, "Sync network success", "Sync network success")
 
 	// create or update pod
 	logger.Info("syncing pod")
@@ -320,7 +326,77 @@ func (r *DevboxReconciler) syncPod(ctx context.Context, devbox *devboxv1alpha1.D
 	return nil
 }
 
-func (r *DevboxReconciler) syncService(ctx context.Context, devbox *devboxv1alpha1.Devbox, recLabels map[string]string) error {
+func (r *DevboxReconciler) syncClusterIPService(ctx context.Context, devbox *devboxv1alpha1.Devbox, recLabels map[string]string) error {
+	runtimecr, err := r.getRuntime(ctx, devbox)
+	if err != nil {
+		return err
+	}
+	var servicePorts []corev1.ServicePort
+	for _, port := range runtimecr.Spec.Config.Ports {
+		servicePorts = append(servicePorts, corev1.ServicePort{
+			Name:       port.Name,
+			Port:       port.ContainerPort,
+			TargetPort: intstr.FromInt32(port.ContainerPort),
+			Protocol:   port.Protocol,
+		})
+	}
+	if len(servicePorts) == 0 {
+		//use the default value
+		servicePorts = []corev1.ServicePort{
+			{
+				Name:       "devbox-ssh-port",
+				Port:       22,
+				TargetPort: intstr.FromInt32(22),
+				Protocol:   corev1.ProtocolTCP,
+			},
+		}
+	}
+	expectServiceSpec := corev1.ServiceSpec{
+		Selector: recLabels,
+		Type:     corev1.ServiceTypeClusterIP,
+		Ports:    servicePorts,
+	}
+	service := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      devbox.Name + "-cluster-ip-svc",
+			Namespace: devbox.Namespace,
+			Labels:    recLabels,
+		},
+	}
+	if _, err := controllerutil.CreateOrUpdate(ctx, r.Client, service, func() error {
+		// only update some specific fields
+		service.Spec.Selector = expectServiceSpec.Selector
+		service.Spec.Type = expectServiceSpec.Type
+		if len(service.Spec.Ports) == 0 {
+			service.Spec.Ports = expectServiceSpec.Ports
+		} else {
+			service.Spec.Ports[0].Name = expectServiceSpec.Ports[0].Name
+			service.Spec.Ports[0].Port = expectServiceSpec.Ports[0].Port
+			service.Spec.Ports[0].TargetPort = expectServiceSpec.Ports[0].TargetPort
+			service.Spec.Ports[0].Protocol = expectServiceSpec.Ports[0].Protocol
+		}
+		return controllerutil.SetControllerReference(devbox, service, r.Scheme)
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *DevboxReconciler) syncNetwork(ctx context.Context, devbox *devboxv1alpha1.Devbox, recLabels map[string]string) error {
+	switch devbox.Spec.NetworkSpec.Type {
+	case devboxv1alpha1.NetworkTypeNodePort:
+		return r.syncNodePortNetwork(ctx, devbox, recLabels)
+	case devboxv1alpha1.NetworkTypeWebSocket:
+		return r.syncWebSocketNetwork(ctx, devbox, recLabels)
+	}
+	return nil
+}
+
+func (r *DevboxReconciler) syncNodePortNetwork(ctx context.Context, devbox *devboxv1alpha1.Devbox, recLabels map[string]string) error {
+	// sync node port service
+	// steps:
+	// 1. create node port service
+	// 2. update devbox status with node port
 	runtimecr, err := r.getRuntime(ctx, devbox)
 	if err != nil {
 		return err
@@ -402,6 +478,16 @@ func (r *DevboxReconciler) syncService(ctx context.Context, devbox *devboxv1alph
 	devbox.Status.Network.NodePort = nodePort
 
 	return r.Status().Update(ctx, devbox)
+}
+
+func (r *DevboxReconciler) syncWebSocketNetwork(ctx context.Context, devbox *devboxv1alpha1.Devbox, recLabels map[string]string) error {
+	// sync websocket network type
+	// steps:
+	// 1. create websocket pod
+	// 2. create websocket service
+	// 3. create websocket ingress
+
+	return nil
 }
 
 // get the runtime

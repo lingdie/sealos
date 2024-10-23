@@ -2652,6 +2652,7 @@ spec:
                     enum:
                     - NodePort
                     - Tailnet
+                    - WebSocket
                     type: string
                 required:
                 - type
@@ -2842,6 +2843,9 @@ spec:
                     enum:
                     - NodePort
                     - Tailnet
+                    - WebSocket
+                    type: string
+                  webSocket:
                     type: string
                 required:
                 - type
