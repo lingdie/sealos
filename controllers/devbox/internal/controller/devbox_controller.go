@@ -34,6 +34,8 @@ import (
 	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/ptr"
 
+	networkingv1 "k8s.io/api/networking/v1"
+
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -47,6 +49,8 @@ type DevboxReconciler struct {
 	CommitImageRegistry     string
 	RequestEphemeralStorage string
 	LimitEphemeralStorage   string
+	WebSocketImage          string
+	Domain                  string
 
 	DebugMode bool
 
@@ -54,6 +58,9 @@ type DevboxReconciler struct {
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
 }
+
+// runtimeKey is the key used to store the runtime in the context
+type runtimeKey struct{}
 
 // +kubebuilder:rbac:groups=devbox.sealos.io,resources=devboxes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=devbox.sealos.io,resources=devboxes/status,verbs=get;update;patch
@@ -487,19 +494,109 @@ func (r *DevboxReconciler) syncWebSocketNetwork(ctx context.Context, devbox *dev
 	// 2. create websocket service
 	// 3. create websocket ingress
 
+	// get ssh port from runtime
+	runtimecr, err := r.getRuntime(ctx, devbox)
+	if err != nil {
+		return err
+	}
+	sshPort := int32(22)
+	for _, port := range runtimecr.Spec.Config.Ports {
+		if port.Name == "devbox-ssh-port" {
+			sshPort = port.ContainerPort
+			break
+		}
+	}
+
+	devbox.Status.Network.Type = devboxv1alpha1.NetworkTypeWebSocket
+	if devbox.Status.Network.WebSocket == "" {
+		// generate a random string as the subdomain.
+		// TODO: what if the subdomain is already used by other devboxes?...
+		devbox.Status.Network.WebSocket = fmt.Sprintf("%s-%s.%s", devbox.Name, rand.String(5), r.Domain)
+	}
+	if err := r.Status().Update(ctx, devbox); err != nil {
+		return err
+	}
+
+	// create websocket pod
+	wsPod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      devbox.Name + "-ws-proxy",
+			Namespace: devbox.Namespace,
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{
+				{
+					Name:  "ws-proxy",
+					Image: r.WebSocketImage,
+					Args: []string{
+						"server",
+						"--port=80",
+						fmt.Sprintf("--ssh-port=%d", sshPort),
+						fmt.Sprintf("--proxy=%s", devbox.Status.Network.WebSocket),
+						"-v=true",
+					},
+				},
+			},
+		},
+	}
+	// if devbox is running, create the pod
+	if devbox.Spec.State == devboxv1alpha1.DevboxStateRunning {
+		if _, err := controllerutil.CreateOrUpdate(ctx, r.Client, wsPod, func() error {
+			return controllerutil.SetControllerReference(devbox, wsPod, r.Scheme)
+		}); err != nil {
+			return err
+		}
+	} else {
+		// if devbox is stopped, delete the pod
+		r.Client.Delete(ctx, wsPod)
+	}
+
+	// create websocket service
+	wsSvc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      devbox.Name + "-ws-svc",
+			Namespace: devbox.Namespace,
+		},
+	}
+	if _, err := controllerutil.CreateOrUpdate(ctx, r.Client, wsSvc, func() error {
+		return controllerutil.SetControllerReference(devbox, wsSvc, r.Scheme)
+	}); err != nil {
+		return err
+	}
+
+	// create websocket ingress
+
+	wsIngress := &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      devbox.Name + "-ws-ingress",
+			Namespace: devbox.Namespace,
+		},
+	}
+	if _, err := controllerutil.CreateOrUpdate(ctx, r.Client, wsIngress, func() error {
+		return controllerutil.SetControllerReference(devbox, wsIngress, r.Scheme)
+	}); err != nil {
+		return err
+	}
 	return nil
 }
 
 // get the runtime
 func (r *DevboxReconciler) getRuntime(ctx context.Context, devbox *devboxv1alpha1.Devbox) (*devboxv1alpha1.Runtime, error) {
+	// Try to get the runtime from the context
+	if runtime, ok := ctx.Value(runtimeKey{}).(*devboxv1alpha1.Runtime); ok {
+		return runtime, nil
+	}
+	// If not in context, fetch from API server
 	runtimeNamespace := devbox.Spec.RuntimeRef.Namespace
 	if runtimeNamespace == "" {
 		runtimeNamespace = devbox.Namespace
 	}
 	runtimecr := &devboxv1alpha1.Runtime{}
 	if err := r.Get(ctx, client.ObjectKey{Namespace: runtimeNamespace, Name: devbox.Spec.RuntimeRef.Name}, runtimecr); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get runtime: %w", err)
 	}
+	// Store the runtime in the context for future use
+	ctx = context.WithValue(ctx, runtimeKey{}, runtimecr)
 	return runtimecr, nil
 }
 
