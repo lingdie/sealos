@@ -284,6 +284,11 @@ func GenerateDevboxEnvVars(devbox *devboxv1alpha1.Devbox, nextCommitHistory *dev
 		}
 	}
 
+	initialized := false
+	if GetLastSuccessCommitHistory(devbox) != nil {
+		initialized = true
+	}
+
 	return []corev1.EnvVar{
 		{
 			Name:  "SEALOS_COMMIT_ON_STOP",
@@ -292,6 +297,10 @@ func GenerateDevboxEnvVars(devbox *devboxv1alpha1.Devbox, nextCommitHistory *dev
 		{
 			Name:  "SEALOS_COMMIT_IMAGE_NAME",
 			Value: nextCommitHistory.Image,
+		},
+		{
+			Name:  "SEALOS_DEVBOX_INIT",
+			Value: fmt.Sprintf("%v", initialized),
 		},
 		{
 			Name:  "SEALOS_COMMIT_IMAGE_SQUASH",
