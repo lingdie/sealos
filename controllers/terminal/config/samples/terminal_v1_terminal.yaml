@@ -1,4 +1,4 @@
-# Copyright © 2023 sealos.
+# Copyright © 2024 sealos.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,14 +15,9 @@
 apiVersion: terminal.sealos.io/v1
 kind: Terminal
 metadata:
+  labels:
+    app.kubernetes.io/name: terminal
+    app.kubernetes.io/managed-by: kustomize
   name: terminal-sample
-  annotations:
-    lastUpdateTime: "2022-08-15T14:22:49+08:00"
 spec:
-  user: ccl
-  token: abc
-  apiServer: https://192.168.49.2:8443
-  ttyImage: ghcr.io/cuisongliu/go-docker-dev:1.18.4
-  replicas: 1
-  keepalived: 11h
-  ingressType: nginx
+  # TODO(user): Add fields here
