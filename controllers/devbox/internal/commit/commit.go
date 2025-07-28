@@ -68,6 +68,8 @@ func (c *CommitterImpl) CreateContainer(ctx context.Context, devboxName string, 
 		AnnotationKeyContentID: contentID,
 		AnnotationKeyNamespace: DefaultNamespace,
 		AnnotationKeyImageName: baseImage,
+		AnnotationImageFrom:    AnnotationImageFromValue,
+		AnnotationUseLimit:     AnnotationUseLimitValue,
 	}
 
 	containerName := fmt.Sprintf("%s-container", devboxName) // container name
