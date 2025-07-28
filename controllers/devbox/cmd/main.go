@@ -49,6 +49,7 @@ import (
 	devboxv1alpha1 "github.com/labring/sealos/controllers/devbox/api/v1alpha1"
 	"github.com/labring/sealos/controllers/devbox/internal/commit"
 	"github.com/labring/sealos/controllers/devbox/internal/controller"
+	"github.com/labring/sealos/controllers/devbox/internal/controller/helper"
 	"github.com/labring/sealos/controllers/devbox/internal/controller/utils/matcher"
 	"github.com/labring/sealos/controllers/devbox/internal/controller/utils/nodes"
 	utilresource "github.com/labring/sealos/controllers/devbox/internal/controller/utils/resource"
@@ -98,6 +99,8 @@ func main() {
 	var restartPredicateDuration time.Duration
 	// devbox node label
 	var devboxNodeLabel string
+	var acceptanceThreshold uint
+	var acceptanceConsideration helper.AcceptanceConsideration
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -130,6 +133,9 @@ func main() {
 	flag.DurationVar(&restartPredicateDuration, "restart-predicate-duration", 2*time.Hour, "Sets the restart predicate time duration for devbox controller restart. By default, the duration is set to 2 hours.")
 	// devbox node label
 	flag.StringVar(&devboxNodeLabel, "devbox-node-label", "devbox.sealos.io/node", "The label of the devbox node")
+	// scheduling flags
+	flag.UintVar(&acceptanceThreshold, "acceptance-threshold", 100, "The minimum acceptance score for scheduling devbox to node. Default is 100, which means the node must have enough resources to run the devbox.")
+	flag.UintVar(&acceptanceConsideration.ContainerFSThreshold, "container-fs-threshold", 10, "The percentage of available bytes required to consider the node suitable for scheduling devbox. Default is 10, which means the node must have at least 10% of available bytes in the container filesystem.")
 	opts := zap.Options{
 		Development: true,
 	}

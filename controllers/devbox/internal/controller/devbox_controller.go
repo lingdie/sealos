@@ -25,6 +25,7 @@ import (
 	"github.com/labring/sealos/controllers/devbox/internal/controller/helper"
 	"github.com/labring/sealos/controllers/devbox/internal/controller/utils/matcher"
 	"github.com/labring/sealos/controllers/devbox/internal/controller/utils/resource"
+	"github.com/labring/sealos/controllers/devbox/internal/stat"
 	"github.com/labring/sealos/controllers/devbox/label"
 
 	"github.com/google/uuid"
@@ -67,6 +68,9 @@ type DevboxReconciler struct {
 	StateChangeRecorder record.EventRecorder
 
 	RestartPredicateDuration time.Duration
+	AcceptanceThreshold      uint
+	helper.AcceptanceConsideration
+	stat.NodeStatsProvider
 }
 
 // +kubebuilder:rbac:groups=devbox.sealos.io,resources=devboxes,verbs=get;list;watch;create;update;patch;delete
@@ -146,12 +150,16 @@ func (r *DevboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	// if devbox state is running, schedule devbox to node, update devbox status and create a new commit record
 	// and filter out the devbox that are not in the current node
 	if devbox.Spec.State == devboxv1alpha1.DevboxStateRunning {
-		if devbox.Status.CommitRecords[devbox.Status.ContentID].Node == "" {
+		if devbox.Status.CommitRecords[devbox.Status.ContentID].Node == "" && r.getAcceptanceScore(ctx) >= r.AcceptanceThreshold {
+			// if devbox is not scheduled to node, schedule it to current node
+			logger.Info("devbox not scheduled to node, try scheduling to us now",
+				"nodeName", r.NodeName,
+				"contentID", devbox.Status.ContentID)
 			// set up devbox node and content id, new a record for the devbox
 			devbox.Status.CommitRecords[devbox.Status.ContentID].Node = r.NodeName
 			if err := r.Status().Update(ctx, devbox); err != nil {
-				logger.Info("try to schedule devbox to node failed", "error", err)
-				return ctrl.Result{}, nil
+				logger.Info("try to schedule devbox to node failed. This devbox may have already been scheduled to another node", "error", err)
+				return ctrl.Result{}, err
 			}
 			logger.Info("devbox scheduled to node", "node", r.NodeName)
 			r.Recorder.Eventf(devbox, corev1.EventTypeNormal, "Devbox scheduled to node", "Devbox scheduled to node")
@@ -571,6 +579,30 @@ func (r *DevboxReconciler) generateDevboxPod(devbox *devboxv1alpha1.Devbox, opts
 	}
 
 	return expectPod
+}
+
+func (r *DevboxReconciler) getAcceptanceScore(ctx context.Context) uint {
+	// This is a placeholder for the actual scoring logic.
+	// In a real implementation, this would return a score based on the node's resources, load, etc.
+	// For now, we return a fixed score to simulate the scheduling decision.
+	containerFsStats, err := r.ContainerFsSTats(ctx)
+	if err != nil {
+		return 0 // If we can't get the stats, we assume the node is not suitable
+	} else if containerFsStats.AvailableBytes == nil || containerFsStats.CapacityBytes == nil {
+		return 0 // If we can't get the stats, we assume the node is not suitable
+	}
+	availableBytes := *containerFsStats.AvailableBytes
+	capacityBytes := *containerFsStats.CapacityBytes
+	if minBytesRequired, ok := r.EphemeralStorage.MaximumLimit.AsInt64(); !ok {
+		return 0
+	} else if availableBytes < uint64(minBytesRequired) {
+		return 0
+	}
+	availablePercentage := uint(float64(availableBytes) / float64(capacityBytes) * 100)
+	if availablePercentage < r.ContainerFSThreshold {
+		return 0
+	}
+	return 100 // Assume a score of 100 means the node is suitable for scheduling
 }
 
 type ControllerRestartPredicate struct {
