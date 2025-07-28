@@ -36,13 +36,13 @@ type FsStats struct {
 }
 
 type NodeStatsProvider interface {
-	ContainerFsSTats(ctx context.Context) (FsStats, error)
+	ContainerFsStats(ctx context.Context) (FsStats, error)
 }
 type NodeStatsProviderImpl struct {
 	// Client *containerd.Client
 }
 
-func (n *NodeStatsProviderImpl) ContainerFsSTats(ctx context.Context) (FsStats, error) {
+func (n *NodeStatsProviderImpl) ContainerFsStats(ctx context.Context) (FsStats, error) {
 	// This is a placeholder for the actual implementation.
 	// In a real implementation, this would return the filesystem stats of the container.
 	availableBytes := uint64(1000000000) // Example value

@@ -585,7 +585,7 @@ func (r *DevboxReconciler) getAcceptanceScore(ctx context.Context) uint {
 	// This is a placeholder for the actual scoring logic.
 	// In a real implementation, this would return a score based on the node's resources, load, etc.
 	// For now, we return a fixed score to simulate the scheduling decision.
-	containerFsStats, err := r.ContainerFsSTats(ctx)
+	containerFsStats, err := r.ContainerFsStats(ctx)
 	if err != nil {
 		return 0 // If we can't get the stats, we assume the node is not suitable
 	} else if containerFsStats.AvailableBytes == nil || containerFsStats.CapacityBytes == nil {
