@@ -602,7 +602,83 @@ func (r *DevboxReconciler) getAcceptanceScore(ctx context.Context) uint {
 	if availablePercentage < r.ContainerFSThreshold {
 		return 0
 	}
+	cpuRequestPercentage, err := r.getTotalCPURequest(ctx, r.NodeName)
+	if err != nil {
+		return 0 // If we can't get the CPU request, we assume the node is not suitable
+	} else if cpuRequestPercentage > r.CPURequestRatio {
+		return 0
+	}
+	cpuLimitPercentage, err := r.getTotalCPULimit(ctx, r.NodeName)
+	if err != nil {
+		return 0 // If we can't get the CPU limit, we assume the node is not suitable
+	} else if cpuLimitPercentage > r.CPULimitRatio {
+		return 0
+	}
 	return 100 // Assume a score of 100 means the node is suitable for scheduling
+}
+
+// getTotalCPURequest returns the total CPU requests (in millicores) for all pods in the namespace.
+func (r *DevboxReconciler) getTotalCPURequest(ctx context.Context, namespace string) (uint, error) {
+	podList := &corev1.PodList{}
+	listOpts := []client.ListOption{
+		client.InNamespace(namespace),
+		client.MatchingFields{"spec.nodeName": r.NodeName},
+	}
+	if err := r.List(ctx, podList, listOpts...); err != nil {
+		return 0, err
+	}
+	var totalCPURequest int64
+	for _, pod := range podList.Items {
+		for _, container := range pod.Spec.Containers {
+			if cpuReq, ok := container.Resources.Requests[corev1.ResourceCPU]; ok {
+				// TODO: check if this could lead to overflow
+				totalCPURequest += cpuReq.MilliValue()
+			}
+		}
+	}
+	node := &corev1.Node{}
+	if err := r.Get(ctx, client.ObjectKey{Name: r.NodeName}, node); err != nil {
+		return 0, err
+	}
+	allocatableCPU := node.Status.Allocatable[corev1.ResourceCPU]
+	allocatableMilli := allocatableCPU.MilliValue()
+	if allocatableMilli == 0 {
+		return 0, fmt.Errorf("node %s allocatable CPU is zero", r.NodeName)
+	}
+	percentage := uint((float64(totalCPURequest) / float64(allocatableMilli)) * 100)
+	return percentage, nil
+}
+
+// getTotalCPULimit returns the total CPU limits (in millicores) for all pods in the namespace.
+func (r *DevboxReconciler) getTotalCPULimit(ctx context.Context, namespace string) (uint, error) {
+	podList := &corev1.PodList{}
+	listOpts := []client.ListOption{
+		client.InNamespace(namespace),
+		client.MatchingFields{"spec.nodeName": r.NodeName},
+	}
+	if err := r.List(ctx, podList, listOpts...); err != nil {
+		return 0, err
+	}
+	var totalCPULimit int64
+	for _, pod := range podList.Items {
+		for _, container := range pod.Spec.Containers {
+			if cpuLimit, ok := container.Resources.Limits[corev1.ResourceCPU]; ok {
+				// TODO: check if this could lead to overflow
+				totalCPULimit += cpuLimit.MilliValue()
+			}
+		}
+	}
+	node := &corev1.Node{}
+	if err := r.Get(ctx, client.ObjectKey{Name: r.NodeName}, node); err != nil {
+		return 0, err
+	}
+	allocatableCPU := node.Status.Allocatable[corev1.ResourceCPU]
+	allocatableMilli := allocatableCPU.MilliValue()
+	if allocatableMilli == 0 {
+		return 0, fmt.Errorf("node %s allocatable CPU is zero", r.NodeName)
+	}
+	percentage := uint((float64(totalCPULimit) / float64(allocatableMilli)) * 100)
+	return percentage, nil
 }
 
 type ControllerRestartPredicate struct {

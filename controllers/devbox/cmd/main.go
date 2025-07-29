@@ -136,6 +136,8 @@ func main() {
 	// scheduling flags
 	flag.UintVar(&acceptanceThreshold, "acceptance-threshold", 100, "The minimum acceptance score for scheduling devbox to node. Default is 100, which means the node must have enough resources to run the devbox.")
 	flag.UintVar(&acceptanceConsideration.ContainerFSThreshold, "container-fs-threshold", 10, "The percentage of available bytes required to consider the node suitable for scheduling devbox. Default is 10, which means the node must have at least 10% of available bytes in the container filesystem.")
+	flag.UintVar(&acceptanceConsideration.CPULimitRatio, "cpu-limit-ratio", 10, "The ratio of expected overcommitment (total cpu limit / available cpu) of CPU limit. Default is 10, which means the CPU limit cannot be overcommited by more than 1000%.")
+	flag.UintVar(&acceptanceConsideration.CPURequestRatio, "cpu-request-ratio", 10, "The ratio of expected overcommitment (total cpu request / available cpu) of CPU request. Default is 10, which means the CPU request cannot be overcommited by more than 1000%.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -273,6 +275,8 @@ func main() {
 		DebugMode:                debugMode,
 		RestartPredicateDuration: restartPredicateDuration,
 		NodeName:                 nodes.GetNodeName(),
+		AcceptanceConsideration:  acceptanceConsideration,
+		AcceptanceThreshold:      acceptanceThreshold,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Devbox")
 		os.Exit(1)
