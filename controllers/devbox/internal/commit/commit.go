@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 	"io"
-	
+
 	"github.com/containerd/containerd/v2/client"
 	"github.com/containerd/containerd/v2/pkg/namespaces"
 	"github.com/containerd/containerd/v2/pkg/oci"
@@ -129,7 +129,7 @@ func (c *CommitterImpl) DeleteContainer(ctx context.Context, containerName strin
 		return fmt.Errorf("failed to delete container: %v", err)
 	}
 
-	log.Printf("Container deleted: %s", containerName)
+	log.Printf("Container deleted: %s successfully", containerName)
 	return nil
 }
 
@@ -157,7 +157,17 @@ func (c *CommitterImpl) Commit(ctx context.Context, devboxName string, contentID
 			RemoveBaseImageTopLayer: DevboxOptionsRemoveBaseImageTopLayer,
 		},
 	}
-	return container.Commit(ctx, c.containerdClient, commitImage, containerID, opt)
+
+	err = container.Commit(ctx, c.containerdClient, commitImage, containerID, opt)
+	if err != nil {
+		// delete container
+		err = c.DeleteContainer(ctx, containerID)
+		if err != nil {
+			log.Printf("Warning: failed to delete container %s: %v", containerID, err)
+		}
+		return fmt.Errorf("failed to commit container: %v", err)
+	}
+	return nil
 }
 
 // GetContainerAnnotations get container annotations
