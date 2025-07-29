@@ -272,7 +272,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	committer := &commit.CommitterImpl{}
+	committer,_ := commit.NewCommitter()
 
 	stateChangeHandler := controller.StateChangeHandler{
 		Client:              mgr.GetClient(),
