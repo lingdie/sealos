@@ -3,14 +3,17 @@ package commit
 import (
 	"context"
 	"fmt"
-	"log"
 	"io"
-	
+	"log"
+	"strings"
+	"time"
+
 	"github.com/containerd/containerd/v2/client"
 	"github.com/containerd/containerd/v2/pkg/namespaces"
-	"github.com/containerd/containerd/v2/pkg/oci"
 	"github.com/containerd/nerdctl/v2/pkg/api/types"
 	"github.com/containerd/nerdctl/v2/pkg/cmd/container"
+	"github.com/containerd/nerdctl/v2/pkg/containerutil"
+	ncdefaults "github.com/containerd/nerdctl/v2/pkg/defaults"
 	"github.com/labring/sealos/controllers/devbox/api/v1alpha1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -24,20 +27,40 @@ type Committer interface {
 type CommitterImpl struct {
 	runtimeServiceClient runtimeapi.RuntimeServiceClient // CRI client
 	containerdClient     *client.Client                  // containerd client
+	conn                 *grpc.ClientConn                // gRPC connection
 }
 
 // NewCommitter new a CommitterImpl
 func NewCommitter() (Committer, error) {
-	// create gRPC connection
-	conn, err := grpc.NewClient(DefaultContainerdAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		return nil, err
+	var conn *grpc.ClientConn
+	var err error
+
+	// retry to connect
+	for i := 0; i <= DefaultMaxRetries; i++ {
+		if i > 0 {
+			log.Printf("Retrying connection to containerd (attempt %d/%d)...", i, DefaultMaxRetries)
+			time.Sleep(DefaultRetryDelay)
+		}
+
+		// create gRPC connection
+		conn, err = grpc.NewClient(DefaultContainerdAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err == nil {
+			log.Printf("Successfully connected to containerd at %s", DefaultContainerdAddress)
+			break
+		}
+
+		log.Printf("Failed to connect to containerd (attempt %d/%d): %v", i+1, DefaultMaxRetries+1, err)
+
+		if i == DefaultMaxRetries {
+			return nil, fmt.Errorf("failed to connect to containerd after %d attempts: %v", DefaultMaxRetries+1, err)
+		}
 	}
 
-	// create Containerd client: default namespace in const.go
+	// create Containerd client
 	containerdClient, err := client.NewWithConn(conn, client.WithDefaultNamespace(DefaultNamespace))
 	if err != nil {
-		return nil, err
+		conn.Close()
+		return nil, fmt.Errorf("failed to create containerd client: %v", err)
 	}
 
 	// create CRI client
@@ -46,27 +69,27 @@ func NewCommitter() (Committer, error) {
 	return &CommitterImpl{
 		runtimeServiceClient: runtimeServiceClient,
 		containerdClient:     containerdClient,
+		conn:                 conn,
 	}, nil
 }
 
-// CreateContainer create container
+// CreateContainer create container with labels
 func (c *CommitterImpl) CreateContainer(ctx context.Context, devboxName string, contentID string, baseImage string) (string, error) {
 	fmt.Println("========>>>> create container", devboxName, contentID, baseImage)
-	// 1. get image
 	ctx = namespaces.WithNamespace(ctx, DefaultNamespace)
-	image, err := c.containerdClient.GetImage(ctx, baseImage)
-	if err != nil {
-		// image not found, try to pull
-		log.Printf("Image %s not found, pulling...", baseImage)
-		image, err = c.containerdClient.Pull(ctx, baseImage, client.WithPullUnpack)
-		if err != nil {
-			return "", fmt.Errorf("failed to pull image %s: %v", baseImage, err)
+
+	// check connection status, if connection is bad, try to reconnect
+	if err := c.CheckConnection(ctx); err != nil {
+		log.Printf("Connection check failed: %v, attempting to reconnect...", err)
+		if reconnectErr := c.Reconnect(ctx); reconnectErr != nil {
+			return "", fmt.Errorf("failed to reconnect: %v", reconnectErr)
 		}
 	}
 
-	// 2. create container
-	// add annotations/labels
-	annotations := map[string]string{
+	global := NewGlobalOptionConfig()
+
+	// create container with labels
+	originalAnnotations := map[string]string{
 		v1alpha1.AnnotationContentID:    contentID,
 		v1alpha1.AnnotationInit:         AnnotationImageFromValue,
 		v1alpha1.AnnotationStorageLimit: AnnotationUseLimitValue,
@@ -74,26 +97,60 @@ func (c *CommitterImpl) CreateContainer(ctx context.Context, devboxName string, 
 		AnnotationKeyImageName:          baseImage,
 	}
 
-	containerName := fmt.Sprintf("%s-container", devboxName) // container name
+	// convert labels to "containerd.io/snapshot/devbox-" format
+	convertedLabels := convertLabels(originalAnnotations)
+	convertedAnnotations := convertMapToSlice(originalAnnotations)
 
-	container, err := c.containerdClient.NewContainer(ctx, containerName,
-		client.WithImage(image),
-		client.WithNewSnapshot(containerName, image),
-		client.WithContainerLabels(annotations),        // add annotations
-		client.WithNewSpec(oci.WithImageConfig(image)), // oci.WithProcessArgs("/bin/sh", "-c", "while true; do echo 'Hello, World!'; sleep 5; done"),
-		// oci.WithHostname("test-container"),
-
-	)
-	if err != nil {
-		return "", fmt.Errorf("failed to create container: %v", err)
+	// create container options
+	createOpt := types.ContainerCreateOptions{
+		GOptions:       *global,
+		Runtime:        DefaultRuntime, // user devbox runtime
+		Name:           fmt.Sprintf("devbox-%s-container-%d", devboxName,time.Now().Unix()),
+		Pull:           "missing",
+		InRun:          false, // not start container
+		Rm:             false,
+		LogDriver:      "json-file",
+		StopSignal:     "SIGTERM",
+		Restart:        "unless-stopped",
+		Interactive:    false,  // not interactive, avoid conflict with Detach
+		Cgroupns:       "host", // add cgroupns mode
+		Detach:         true,   // run in background
+		Rootfs:         false,
+		Label:          convertedAnnotations,
+		SnapshotLabels: convertedLabels,
+		ImagePullOpt: types.ImagePullOptions{
+			GOptions: types.GlobalCommandOptions{
+				Snapshotter: DefaultSnapshotter,
+			},
+		},
 	}
 
+	// create network manager
+	networkManager, err := containerutil.NewNetworkingOptionsManager(createOpt.GOptions,
+		types.NetworkOptions{
+			NetworkSlice: []string{DefaultNetworkMode},
+		}, c.containerdClient)
+	if err != nil {
+		log.Println("failed to create network manager:", err)
+		return "", fmt.Errorf("failed to create network manager: %v", err)
+	}
+
+	// create container
+	container, cleanup, err := container.Create(ctx, c.containerdClient, []string{originalAnnotations[AnnotationKeyImageName]}, networkManager, createOpt)
+	if err != nil {
+		log.Println("failed to create container:", err)
+		return "", fmt.Errorf("failed to create container: %v", err)
+	}
+	if cleanup != nil {
+		defer cleanup()
+	}
+
+	log.Printf("container created successfully: %s\n", container.ID())
 	return container.ID(), nil
 }
 
 // DeleteContainer delete container
 func (c *CommitterImpl) DeleteContainer(ctx context.Context, containerName string) error {
-	// load container
 	ctx = namespaces.WithNamespace(ctx, DefaultNamespace)
 	container, err := c.containerdClient.LoadContainer(ctx, containerName)
 	if err != nil {
@@ -129,7 +186,33 @@ func (c *CommitterImpl) DeleteContainer(ctx context.Context, containerName strin
 		return fmt.Errorf("failed to delete container: %v", err)
 	}
 
-	log.Printf("Container deleted: %s", containerName)
+	log.Printf("Container deleted: %s successfully", containerName)
+	return nil
+}
+
+// RemoveContainer remove container
+func (c *CommitterImpl) RemoveContainer(ctx context.Context, containerNames string) error {
+	ctx = namespaces.WithNamespace(ctx, DefaultNamespace)
+
+	// check connection status, if connection is bad, try to reconnect
+	if err := c.CheckConnection(ctx); err != nil {
+		log.Printf("Connection check failed: %v, attempting to reconnect...", err)
+		if reconnectErr := c.Reconnect(ctx); reconnectErr != nil {
+			return fmt.Errorf("failed to reconnect: %v", reconnectErr)
+		}
+	}
+
+	global := NewGlobalOptionConfig()
+	opt := types.ContainerRemoveOptions{
+		Stdout:   io.Discard,
+		Force:    false,
+		Volumes:  false,
+		GOptions: *global,
+	}
+	err := container.Remove(ctx, c.containerdClient, []string{containerNames}, opt)
+	if err != nil {
+		return fmt.Errorf("failed to remove container: %v", err)
+	}
 	return nil
 }
 
@@ -142,22 +225,31 @@ func (c *CommitterImpl) Commit(ctx context.Context, devboxName string, contentID
 		return fmt.Errorf("failed to create container: %v", err)
 	}
 
-	global := types.GlobalCommandOptions{
-		Namespace:        DefaultNamespace,
-		Address:          DefaultContainerdAddress,
-		DataRoot:         DefaultDataRoot,
-		InsecureRegistry: InsecureRegistry,
-	}
-
+	// create commit options
+	global := NewGlobalOptionConfig()
 	opt := types.ContainerCommitOptions{
 		Stdout:   io.Discard,
-		GOptions: global,
+		GOptions: *global,
 		Pause:    PauseContainerDuringCommit,
 		DevboxOptions: types.DevboxOptions{
 			RemoveBaseImageTopLayer: DevboxOptionsRemoveBaseImageTopLayer,
 		},
 	}
-	return container.Commit(ctx, c.containerdClient, commitImage, containerID, opt)
+
+	// commit container
+	err = container.Commit(ctx, c.containerdClient, commitImage, containerID, opt)
+	// if commit failed, delete container
+	if err != nil {
+		// delete container
+		err = c.RemoveContainer(ctx, containerID)
+		if err != nil {
+			log.Printf("Warning: failed to delete container %s: %v", containerID, err)
+		}
+		return fmt.Errorf("failed to commit container: %v", err)
+	}
+
+	// commit success, delete container
+	return c.RemoveContainer(ctx, containerID)
 }
 
 // GetContainerAnnotations get container annotations
@@ -252,5 +344,132 @@ func (h *Handler) GC(ctx context.Context) error {
 		}
 	}
 	log.Printf("GC completed, deleted %d containers", deletedContainersCount)
+	return nil
+}
+
+// convertLabels convert labels to "containerd.io/snapshot/devbox-" format
+func convertLabels(labels map[string]string) map[string]string {
+	convertedLabels := make(map[string]string)
+	for key, value := range labels {
+		if strings.HasPrefix(key, ContainerLabelPrefix) {
+			// convert "devbox.sealos.io/" to "containerd.io/snapshot/devbox-"
+			newKey := SnapshotLabelPrefix + key[len(ContainerLabelPrefix):]
+			convertedLabels[newKey] = value
+		}
+	}
+	return convertedLabels
+}
+
+// convertMapToSlice convert map to slice
+func convertMapToSlice(labels map[string]string) []string {
+	slice := make([]string, 0, len(labels))
+	for key, value := range labels {
+		slice = append(slice, fmt.Sprintf("%s=%s", key, value))
+	}
+	return slice
+}
+
+// NewGlobalOptionConfig new global option config
+func NewGlobalOptionConfig() *types.GlobalCommandOptions {
+	return &types.GlobalCommandOptions{
+		Namespace:        DefaultNamespace,
+		Address:          DefaultContainerdAddress,
+		DataRoot:         DefaultDataRoot,
+		Debug:            false,
+		DebugFull:        false,
+		Snapshotter:      DefaultSnapshotter,
+		CNIPath:          ncdefaults.CNIPath(),
+		CNINetConfPath:   ncdefaults.CNINetConfPath(),
+		CgroupManager:    ncdefaults.CgroupManager(),
+		InsecureRegistry: false,
+		HostsDir:         ncdefaults.HostsDirs(),
+		Experimental:     true,
+		HostGatewayIP:    ncdefaults.HostGatewayIP(),
+		KubeHideDupe:     false,
+		CDISpecDirs:      ncdefaults.CDISpecDirs(),
+		UsernsRemap:      "",
+		DNS:              []string{},
+		DNSOpts:          []string{},
+		DNSSearch:        []string{},
+	}
+}
+
+// CheckConnection check if the connection is still alive
+func (c *CommitterImpl) CheckConnection(ctx context.Context) error {
+	if c.conn == nil {
+		return fmt.Errorf("connection is nil")
+	}
+
+	// check connection state
+	state := c.conn.GetState()
+	if state.String() == "TRANSIENT_FAILURE" || state.String() == "SHUTDOWN" {
+		return fmt.Errorf("connection is in bad state: %s", state.String())
+	}
+
+	// try to ping containerd
+	_, err := c.containerdClient.Version(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to ping containerd: %v", err)
+	}
+
+	return nil
+}
+
+// Reconnect attempt to reconnect to containerd
+func (c *CommitterImpl) Reconnect(ctx context.Context) error {
+	log.Printf("Attempting to reconnect to containerd...")
+
+	// close old connection
+	if c.conn != nil {
+		c.conn.Close()
+	}
+
+	var conn *grpc.ClientConn
+	var err error
+
+	for i := 0; i <= DefaultMaxRetries; i++ {
+		if i > 0 {
+			log.Printf("Retrying connection to containerd (attempt %d/%d)...", i, DefaultMaxRetries)
+			time.Sleep(DefaultRetryDelay)
+		}
+
+		// create gRPC connection
+		conn, err = grpc.NewClient(DefaultContainerdAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err == nil {
+			log.Printf("Successfully connected to containerd at %s", DefaultContainerdAddress)
+			break
+		}
+
+		log.Printf("Failed to connect to containerd (attempt %d/%d): %v", i+1, DefaultMaxRetries+1, err)
+
+		if i == DefaultMaxRetries {
+			return fmt.Errorf("failed to connect to containerd after %d attempts: %v", DefaultMaxRetries+1, err)
+		}
+	}
+
+	// recreate containerd client
+	containerdClient, err := client.NewWithConn(conn, client.WithDefaultNamespace(DefaultNamespace))
+	if err != nil {
+		conn.Close()
+		return fmt.Errorf("failed to recreate containerd client: %v", err)
+	}
+
+	// recreate CRI client
+	runtimeServiceClient := runtimeapi.NewRuntimeServiceClient(conn)
+
+	// update instance
+	c.containerdClient = containerdClient
+	c.runtimeServiceClient = runtimeServiceClient
+	c.conn = conn
+
+	log.Printf("Successfully reconnected to containerd")
+	return nil
+}
+
+// Close close the connection
+func (c *CommitterImpl) Close() error {
+	if c.conn != nil {
+		return c.conn.Close()
+	}
 	return nil
 }
