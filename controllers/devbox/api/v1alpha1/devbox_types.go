@@ -32,7 +32,7 @@ const (
 	// Annotate the devbox pod with the devbox part of
 	AnnotationContentID = "devbox.sealos.io/content-id"
 	// Annotate the devbox node with container filesystem threshold
-	AnnotationContainerFSThreshold = "devbox.sealos.io/container-fs-threshold"
+	AnnotationContainerFSAvailableThreshold = "devbox.sealos.io/container-fs-available-threshold"
 	// Annotate the devbox node with cpu request and limit ratio
 	AnnotationCPURequestRatio = "devbox.sealos.io/cpu-request-ratio"
 	AnnotationCPULimitRatio   = "devbox.sealos.io/cpu-limit-ratio"

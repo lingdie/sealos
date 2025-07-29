@@ -588,11 +588,11 @@ func (r *DevboxReconciler) getAcceptanceConsideration(ctx context.Context) (help
 	}
 	ann := node.Annotations
 	ac := helper.AcceptanceConsideration{}
-	if v, err := strconv.Atoi(ann[devboxv1alpha1.AnnotationContainerFSThreshold]); err != nil {
-		logger.Error(err, "failed to parse container FS threshold. use default value instead", "value", ann[devboxv1alpha1.AnnotationContainerFSThreshold])
-		ac.ContainerFSThreshold = helper.DefaultContainerFSThreshold
+	if v, err := strconv.Atoi(ann[devboxv1alpha1.AnnotationContainerFSAvailableThreshold]); err != nil {
+		logger.Error(err, "failed to parse containerfs available threshold. use default value instead", "value", ann[devboxv1alpha1.AnnotationContainerFSAvailableThreshold])
+		ac.ContainerFSAvailableThreshold = helper.DefaultContainerFSAvailableThreshold
 	} else {
-		ac.ContainerFSThreshold = uint(v)
+		ac.ContainerFSAvailableThreshold = uint(v)
 	}
 	if v, err := strconv.Atoi(ann[devboxv1alpha1.AnnotationCPURequestRatio]); err != nil {
 		logger.Error(err, "failed to parse CPU request ratio. use default value instead", "value", ann[devboxv1alpha1.AnnotationCPURequestRatio])
@@ -641,7 +641,7 @@ func (r *DevboxReconciler) getAcceptanceScore(ctx context.Context) uint {
 		return 0
 	}
 	availablePercentage := uint(float64(availableBytes) / float64(capacityBytes) * 100)
-	if availablePercentage < ac.ContainerFSThreshold {
+	if availablePercentage < ac.ContainerFSAvailableThreshold {
 		return 0
 	}
 	cpuRequestPercentage, err := r.getTotalCPURequest(ctx, r.NodeName)
