@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	devboxv1alpha1 "github.com/labring/sealos/controllers/devbox/api/v1alpha1"
@@ -69,7 +70,6 @@ type DevboxReconciler struct {
 
 	RestartPredicateDuration time.Duration
 	AcceptanceThreshold      uint
-	helper.AcceptanceConsideration
 	stat.NodeStatsProvider
 }
 
@@ -580,11 +580,53 @@ func (r *DevboxReconciler) generateDevboxPod(devbox *devboxv1alpha1.Devbox, opts
 
 	return expectPod
 }
+func (r *DevboxReconciler) getAcceptanceConsideration(ctx context.Context) (helper.AcceptanceConsideration, error) {
+	logger := log.FromContext(ctx)
+	node := &corev1.Node{}
+	if err := r.Get(context.Background(), client.ObjectKey{Name: r.NodeName}, node); err != nil {
+		return helper.AcceptanceConsideration{}, err
+	}
+	ann := node.Annotations
+	ac := helper.AcceptanceConsideration{}
+	if v, err := strconv.Atoi(ann[devboxv1alpha1.AnnotationContainerFSThreshold]); err != nil {
+		logger.Error(err, "failed to parse container FS threshold. use default value instead", "value", ann[devboxv1alpha1.AnnotationContainerFSThreshold])
+		ac.ContainerFSThreshold = helper.DefaultContainerFSThreshold
+	} else {
+		ac.ContainerFSThreshold = uint(v)
+	}
+	if v, err := strconv.Atoi(ann[devboxv1alpha1.AnnotationCPURequestRatio]); err != nil {
+		logger.Error(err, "failed to parse CPU request ratio. use default value instead", "value", ann[devboxv1alpha1.AnnotationCPURequestRatio])
+		ac.CPURequestRatio = helper.DefaultCPURequestRatio
+	} else {
+		ac.CPURequestRatio = uint(v)
+	}
+	if v, err := strconv.Atoi(ann[devboxv1alpha1.AnnotationCPULimitRatio]); err != nil {
+		logger.Error(err, "failed to parse CPU limit ratio. use default value instead", "value", ann[devboxv1alpha1.AnnotationCPULimitRatio])
+		ac.CPULimitRatio = helper.DefaultCPULimitRatio
+	} else {
+		ac.CPULimitRatio = uint(v)
+	}
+	if v, err := strconv.Atoi(ann[devboxv1alpha1.AnnotationMemoryRequestRatio]); err != nil {
+		logger.Error(err, "failed to parse memory request ratio. use default value instead", "value", ann[devboxv1alpha1.AnnotationMemoryRequestRatio])
+		ac.MemoryRequestRatio = helper.DefaultMemoryRequestRatio
+	} else {
+		ac.MemoryRequestRatio = uint(v)
+	}
+	if v, err := strconv.Atoi(ann[devboxv1alpha1.AnnotationMemoryLimitRatio]); err != nil {
+		logger.Error(err, "failed to parse memory limit ratio. use default value instead", "value", ann[devboxv1alpha1.AnnotationMemoryLimitRatio])
+		ac.MemoryLimitRatio = helper.DefaultMemoryLimitRatio
+	} else {
+		ac.MemoryLimitRatio = uint(v)
+	}
+	return ac, nil
+}
 
 func (r *DevboxReconciler) getAcceptanceScore(ctx context.Context) uint {
-	// This is a placeholder for the actual scoring logic.
-	// In a real implementation, this would return a score based on the node's resources, load, etc.
-	// For now, we return a fixed score to simulate the scheduling decision.
+	ac, err := r.getAcceptanceConsideration(ctx)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "failed to get acceptance consideration")
+		return 0 // If we can't get the acceptance consideration, we assume the node is not suitable
+	}
 	containerFsStats, err := r.ContainerFsStats(ctx)
 	if err != nil {
 		return 0 // If we can't get the stats, we assume the node is not suitable
@@ -599,31 +641,31 @@ func (r *DevboxReconciler) getAcceptanceScore(ctx context.Context) uint {
 		return 0
 	}
 	availablePercentage := uint(float64(availableBytes) / float64(capacityBytes) * 100)
-	if availablePercentage < r.ContainerFSThreshold {
+	if availablePercentage < ac.ContainerFSThreshold {
 		return 0
 	}
 	cpuRequestPercentage, err := r.getTotalCPURequest(ctx, r.NodeName)
 	if err != nil {
 		return 0 // If we can't get the CPU request, we assume the node is not suitable
-	} else if cpuRequestPercentage > r.CPURequestRatio {
+	} else if cpuRequestPercentage > ac.CPURequestRatio {
 		return 0
 	}
 	cpuLimitPercentage, err := r.getTotalCPULimit(ctx, r.NodeName)
 	if err != nil {
 		return 0 // If we can't get the CPU limit, we assume the node is not suitable
-	} else if cpuLimitPercentage > r.CPULimitRatio {
+	} else if cpuLimitPercentage > ac.CPULimitRatio {
 		return 0
 	}
 	memoryRequestPercentage, err := r.getTotalMemoryRequest(ctx, r.NodeName)
 	if err != nil {
 		return 0 // If we can't get the memory request, we assume the node is not suitable
-	} else if memoryRequestPercentage > r.MemoryRequestRatio {
+	} else if memoryRequestPercentage > ac.MemoryRequestRatio {
 		return 0
 	}
 	memoryLimitPercentage, err := r.getTotalMemoryLimit(ctx, r.NodeName)
 	if err != nil {
 		return 0 // If we can't get the memory limit, we assume the node is not suitable
-	} else if memoryLimitPercentage > r.MemoryLimitRatio {
+	} else if memoryLimitPercentage > ac.MemoryLimitRatio {
 		return 0
 	}
 	return 100 // Assume a score of 100 means the node is suitable for scheduling
