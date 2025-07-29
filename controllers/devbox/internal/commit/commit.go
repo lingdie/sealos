@@ -3,8 +3,8 @@ package commit
 import (
 	"context"
 	"fmt"
-	"log"
 	"io"
+	"log"
 
 	"github.com/containerd/containerd/v2/client"
 	"github.com/containerd/containerd/v2/pkg/namespaces"
@@ -81,8 +81,7 @@ func (c *CommitterImpl) CreateContainer(ctx context.Context, devboxName string, 
 		client.WithNewSnapshot(containerName, image),
 		client.WithContainerLabels(annotations),        // add annotations
 		client.WithNewSpec(oci.WithImageConfig(image)), // oci.WithProcessArgs("/bin/sh", "-c", "while true; do echo 'Hello, World!'; sleep 5; done"),
-		// oci.WithHostname("test-container"),
-
+		client.WithRuntime(DefaultRuntime, nil),        // runtime name
 	)
 	if err != nil {
 		return "", fmt.Errorf("failed to create container: %v", err)

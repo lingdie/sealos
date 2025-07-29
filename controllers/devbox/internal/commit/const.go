@@ -4,6 +4,7 @@ const (
 	DefaultNamespace           = "sealos.io"
 	DefaultContainerdAddress   = "unix:///var/run/containerd/containerd.sock"
 	DefaultDataRoot            = "/var/lib/containerd"
+	DefaultRuntime             = "devbox-runc"
 	InsecureRegistry           = true
 	PauseContainerDuringCommit = false
 
