@@ -138,6 +138,8 @@ func main() {
 	flag.UintVar(&acceptanceConsideration.ContainerFSThreshold, "container-fs-threshold", 10, "The percentage of available bytes required to consider the node suitable for scheduling devbox. Default is 10, which means the node must have at least 10% of available bytes in the container filesystem.")
 	flag.UintVar(&acceptanceConsideration.CPULimitRatio, "cpu-limit-ratio", 10, "The ratio of expected overcommitment (total cpu limit / available cpu) of CPU limit. Default is 10, which means the CPU limit cannot be overcommited by more than 1000%.")
 	flag.UintVar(&acceptanceConsideration.CPURequestRatio, "cpu-request-ratio", 10, "The ratio of expected overcommitment (total cpu request / available cpu) of CPU request. Default is 10, which means the CPU request cannot be overcommited by more than 1000%.")
+	flag.UintVar(&acceptanceConsideration.MemoryLimitRatio, "memory-limit-ratio", 10, "The ratio of expected overcommitment (total memory limit / available memory) of Memory limit. Default is 10, which means the Memory limit cannot be overcommited by more than 1000%.")
+	flag.UintVar(&acceptanceConsideration.MemoryRequestRatio, "memory-request-ratio", 10, "The ratio of expected overcommitment (total memory request / available memory) of Memory request. Default is 10, which means the Memory request cannot be overcommited by more than 1000%.")
 	opts := zap.Options{
 		Development: true,
 	}

@@ -614,6 +614,18 @@ func (r *DevboxReconciler) getAcceptanceScore(ctx context.Context) uint {
 	} else if cpuLimitPercentage > r.CPULimitRatio {
 		return 0
 	}
+	memoryRequestPercentage, err := r.getTotalMemoryRequest(ctx, r.NodeName)
+	if err != nil {
+		return 0 // If we can't get the memory request, we assume the node is not suitable
+	} else if memoryRequestPercentage > r.MemoryRequestRatio {
+		return 0
+	}
+	memoryLimitPercentage, err := r.getTotalMemoryLimit(ctx, r.NodeName)
+	if err != nil {
+		return 0 // If we can't get the memory limit, we assume the node is not suitable
+	} else if memoryLimitPercentage > r.MemoryLimitRatio {
+		return 0
+	}
 	return 100 // Assume a score of 100 means the node is suitable for scheduling
 }
 
@@ -678,6 +690,66 @@ func (r *DevboxReconciler) getTotalCPULimit(ctx context.Context, namespace strin
 		return 0, fmt.Errorf("node %s allocatable CPU is zero", r.NodeName)
 	}
 	percentage := uint((float64(totalCPULimit) / float64(allocatableMilli)) * 100)
+	return percentage, nil
+}
+
+func (r *DevboxReconciler) getTotalMemoryRequest(ctx context.Context, namespace string) (uint, error) {
+	podList := &corev1.PodList{}
+	listOpts := []client.ListOption{
+		client.InNamespace(namespace),
+		client.MatchingFields{"spec.nodeName": r.NodeName},
+	}
+	if err := r.List(ctx, podList, listOpts...); err != nil {
+		return 0, err
+	}
+	var totalMemoryRequest int64
+	for _, pod := range podList.Items {
+		for _, container := range pod.Spec.Containers {
+			if memReq, ok := container.Resources.Requests[corev1.ResourceMemory]; ok {
+				totalMemoryRequest += memReq.Value()
+			}
+		}
+	}
+	node := &corev1.Node{}
+	if err := r.Get(ctx, client.ObjectKey{Name: r.NodeName}, node); err != nil {
+		return 0, err
+	}
+	allocatableMemory := node.Status.Allocatable[corev1.ResourceMemory]
+	allocatableBytes := allocatableMemory.Value()
+	if allocatableBytes == 0 {
+		return 0, fmt.Errorf("node %s allocatable memory is zero", r.NodeName)
+	}
+	percentage := uint((float64(totalMemoryRequest) / float64(allocatableBytes)) * 100)
+	return percentage, nil
+}
+
+func (r *DevboxReconciler) getTotalMemoryLimit(ctx context.Context, namespace string) (uint, error) {
+	podList := &corev1.PodList{}
+	listOpts := []client.ListOption{
+		client.InNamespace(namespace),
+		client.MatchingFields{"spec.nodeName": r.NodeName},
+	}
+	if err := r.List(ctx, podList, listOpts...); err != nil {
+		return 0, err
+	}
+	var totalMemoryLimit int64
+	for _, pod := range podList.Items {
+		for _, container := range pod.Spec.Containers {
+			if memLimit, ok := container.Resources.Limits[corev1.ResourceMemory]; ok {
+				totalMemoryLimit += memLimit.Value()
+			}
+		}
+	}
+	node := &corev1.Node{}
+	if err := r.Get(ctx, client.ObjectKey{Name: r.NodeName}, node); err != nil {
+		return 0, err
+	}
+	allocatableMemory := node.Status.Allocatable[corev1.ResourceMemory]
+	allocatableBytes := allocatableMemory.Value()
+	if allocatableBytes == 0 {
+		return 0, fmt.Errorf("node %s allocatable memory is zero", r.NodeName)
+	}
+	percentage := uint((float64(totalMemoryLimit) / float64(allocatableBytes)) * 100)
 	return percentage, nil
 }
 
