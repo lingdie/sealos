@@ -98,7 +98,7 @@ func main() {
 	var restartPredicateDuration time.Duration
 	// devbox node label
 	var devboxNodeLabel string
-	var acceptanceThreshold uint
+	var acceptanceThreshold int
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -132,7 +132,7 @@ func main() {
 	// devbox node label
 	flag.StringVar(&devboxNodeLabel, "devbox-node-label", "devbox.sealos.io/node", "The label of the devbox node")
 	// scheduling flags
-	flag.UintVar(&acceptanceThreshold, "acceptance-threshold", 100, "The minimum acceptance score for scheduling devbox to node. Default is 100, which means the node must have enough resources to run the devbox.")
+	flag.IntVar(&acceptanceThreshold, "acceptance-threshold", 16, "The minimum acceptance score for scheduling devbox to node. Default is 16, which means the node must have enough resources to run the devbox.")
 	opts := zap.Options{
 		Development: true,
 	}

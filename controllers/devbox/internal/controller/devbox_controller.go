@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"math"
 	"strconv"
 	"time"
 
@@ -69,7 +70,7 @@ type DevboxReconciler struct {
 	StateChangeRecorder record.EventRecorder
 
 	RestartPredicateDuration time.Duration
-	AcceptanceThreshold      uint
+	AcceptanceThreshold      int
 	stat.NodeStatsProvider
 }
 
@@ -621,54 +622,89 @@ func (r *DevboxReconciler) getAcceptanceConsideration(ctx context.Context) (help
 	return ac, nil
 }
 
-func (r *DevboxReconciler) getAcceptanceScore(ctx context.Context) uint {
-	ac, err := r.getAcceptanceConsideration(ctx)
+func (r *DevboxReconciler) getAcceptanceScore(ctx context.Context) int {
+	logger := log.FromContext(ctx)
+	var (
+		ac                      helper.AcceptanceConsideration
+		containerFsStats        stat.FsStats
+		err                     error
+		availableBytes          uint64
+		availablePercentage     uint
+		capacityBytes           uint64
+		cpuRequestPercentage    uint
+		cpuLimitPercentage      uint
+		memoryRequestPercentage uint
+		memoryLimitPercentage   uint
+
+		score int
+	)
+	ac, err = r.getAcceptanceConsideration(ctx)
 	if err != nil {
-		log.FromContext(ctx).Error(err, "failed to get acceptance consideration")
-		return 0 // If we can't get the acceptance consideration, we assume the node is not suitable
+		logger.Error(err, "failed to get acceptance consideration")
+		goto unsuitable // If we can't get the acceptance consideration, we assume the node is not suitable
 	}
-	containerFsStats, err := r.ContainerFsStats(ctx)
-	if err != nil {
-		return 0 // If we can't get the stats, we assume the node is not suitable
-	} else if containerFsStats.AvailableBytes == nil || containerFsStats.CapacityBytes == nil {
-		return 0 // If we can't get the stats, we assume the node is not suitable
+	containerFsStats, err = r.ContainerFsStats(ctx)
+	if err != nil || containerFsStats.AvailableBytes == nil || containerFsStats.CapacityBytes == nil {
+		logger.Error(err, "failed to get container filesystem stats")
+		goto unsuitable // If we can't get the container filesystem stats, we assume the node is not suitable
 	}
-	availableBytes := *containerFsStats.AvailableBytes
-	capacityBytes := *containerFsStats.CapacityBytes
+	availableBytes = *containerFsStats.AvailableBytes
+	capacityBytes = *containerFsStats.CapacityBytes
 	if minBytesRequired, ok := r.EphemeralStorage.MaximumLimit.AsInt64(); !ok {
-		return 0
+		logger.Error(err, "failed to get minimum bytes required for ephemeral storage")
+		goto unsuitable // If we can't get the minimum bytes required, we assume the node is not suitable
 	} else if availableBytes < uint64(minBytesRequired) {
-		return 0
+		logger.Info("available bytes less than minimum required", "availableBytes", availableBytes, "minimumRequired", minBytesRequired)
+		goto unsuitable // If available bytes are less than the minimum required, we assume the node is not suitable
 	}
-	availablePercentage := uint(float64(availableBytes) / float64(capacityBytes) * 100)
-	if availablePercentage < ac.ContainerFSAvailableThreshold {
-		return 0
+	availablePercentage = uint(float64(availableBytes) / float64(capacityBytes) * 100)
+	if availablePercentage > ac.ContainerFSAvailableThreshold {
+		logger.Info("container filesystem available percentage is greater than threshold",
+			"availablePercentage", availablePercentage,
+			"threshold", ac.ContainerFSAvailableThreshold)
+		score += getScoreUnit(1)
 	}
-	cpuRequestPercentage, err := r.getTotalCPURequest(ctx, r.NodeName)
+	cpuRequestPercentage, err = r.getTotalCPURequest(ctx, r.NodeName)
 	if err != nil {
-		return 0 // If we can't get the CPU request, we assume the node is not suitable
-	} else if cpuRequestPercentage > ac.CPURequestRatio {
-		return 0
+		logger.Error(err, "failed to get total CPU request")
+		goto unsuitable // If we can't get the CPU request, we assume the node is not suitable
+	} else if cpuRequestPercentage < ac.CPURequestRatio {
+		logger.Info("cpu request percentage is less than cpu overcommitment request ratio", "requestPercentage", cpuRequestPercentage, "ratio", ac.CPURequestRatio)
+		score += getScoreUnit(0)
 	}
-	cpuLimitPercentage, err := r.getTotalCPULimit(ctx, r.NodeName)
+	cpuLimitPercentage, err = r.getTotalCPULimit(ctx, r.NodeName)
 	if err != nil {
-		return 0 // If we can't get the CPU limit, we assume the node is not suitable
-	} else if cpuLimitPercentage > ac.CPULimitRatio {
-		return 0
+		logger.Error(err, "failed to get total CPU limit")
+		goto unsuitable // If we can't get the CPU limit, we assume the node is not suitable
+	} else if cpuLimitPercentage < ac.CPULimitRatio {
+		logger.Info("cpu limit percentage is less than cpu overcommitment limit ratio", "limitPercentage", cpuLimitPercentage, "ratio", ac.CPULimitRatio)
+		score += getScoreUnit(0)
 	}
-	memoryRequestPercentage, err := r.getTotalMemoryRequest(ctx, r.NodeName)
+	memoryRequestPercentage, err = r.getTotalMemoryRequest(ctx, r.NodeName)
 	if err != nil {
-		return 0 // If we can't get the memory request, we assume the node is not suitable
-	} else if memoryRequestPercentage > ac.MemoryRequestRatio {
-		return 0
+		logger.Error(err, "failed to get total memory request")
+		goto unsuitable // If we can't get the memory request, we assume the node is not suitable
+	} else if memoryRequestPercentage < ac.MemoryRequestRatio {
+		logger.Info("memory request percentage is less than memory overcommitment request ratio", "requestPercentage", memoryRequestPercentage, "ratio", ac.MemoryRequestRatio)
+		score += getScoreUnit(0)
 	}
-	memoryLimitPercentage, err := r.getTotalMemoryLimit(ctx, r.NodeName)
+	memoryLimitPercentage, err = r.getTotalMemoryLimit(ctx, r.NodeName)
 	if err != nil {
-		return 0 // If we can't get the memory limit, we assume the node is not suitable
-	} else if memoryLimitPercentage > ac.MemoryLimitRatio {
-		return 0
+		logger.Error(err, "failed to get total memory limit")
+		goto unsuitable // If we can't get the memory limit, we assume the node is not suitable
+	} else if memoryLimitPercentage < ac.MemoryLimitRatio {
+		logger.Info("memory limit percentage is less than memory overcommitment limit ratio", "limitPercentage", memoryLimitPercentage, "ratio", ac.MemoryLimitRatio)
+		score += getScoreUnit(0)
 	}
-	return 100 // Assume a score of 100 means the node is suitable for scheduling
+	return score
+unsuitable:
+	return math.MinInt
+}
+
+// This function may lead to overflow if p is too large, but since p is always in the range of 0-6, it should be safe.
+// Use with caution.
+func getScoreUnit(p uint) int {
+	return 16 << (p * 4)
 }
 
 // getTotalCPURequest returns the total CPU requests (in millicores) for all pods in the namespace.
@@ -748,6 +784,7 @@ func (r *DevboxReconciler) getTotalMemoryRequest(ctx context.Context, namespace 
 	for _, pod := range podList.Items {
 		for _, container := range pod.Spec.Containers {
 			if memReq, ok := container.Resources.Requests[corev1.ResourceMemory]; ok {
+				// TODO: check if this could lead to overflow
 				totalMemoryRequest += memReq.Value()
 			}
 		}
@@ -778,6 +815,7 @@ func (r *DevboxReconciler) getTotalMemoryLimit(ctx context.Context, namespace st
 	for _, pod := range podList.Items {
 		for _, container := range pod.Spec.Containers {
 			if memLimit, ok := container.Resources.Limits[corev1.ResourceMemory]; ok {
+				// TODO: check if this could lead to overflow
 				totalMemoryLimit += memLimit.Value()
 			}
 		}
