@@ -158,7 +158,9 @@ func (c *CommitterImpl) Commit(ctx context.Context, devboxName string, contentID
 		},
 	}
 
+	// commit container
 	err = container.Commit(ctx, c.containerdClient, commitImage, containerID, opt)
+	// if commit failed, delete container
 	if err != nil {
 		// delete container
 		err = c.DeleteContainer(ctx, containerID)
@@ -167,7 +169,9 @@ func (c *CommitterImpl) Commit(ctx context.Context, devboxName string, contentID
 		}
 		return fmt.Errorf("failed to commit container: %v", err)
 	}
-	return nil
+
+	// commit success, delete container
+	return c.DeleteContainer(ctx, containerID)
 }
 
 // GetContainerAnnotations get container annotations
