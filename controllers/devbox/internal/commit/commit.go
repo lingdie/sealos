@@ -3,13 +3,15 @@ package commit
 import (
 	"context"
 	"fmt"
-	"log"
 	"io"
+	"log"
+
 	"github.com/containerd/containerd/v2/client"
 	"github.com/containerd/containerd/v2/pkg/namespaces"
 	"github.com/containerd/containerd/v2/pkg/oci"
 	"github.com/containerd/nerdctl/v2/pkg/api/types"
 	"github.com/containerd/nerdctl/v2/pkg/cmd/container"
+	"github.com/labring/sealos/controllers/devbox/api/v1alpha1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	runtimeapi "k8s.io/cri-api/pkg/apis/runtime/v1"
@@ -65,9 +67,11 @@ func (c *CommitterImpl) CreateContainer(ctx context.Context, devboxName string, 
 	// 2. create container
 	// add annotations/labels
 	annotations := map[string]string{
-		AnnotationKeyContentID: contentID,
-		AnnotationKeyNamespace: DefaultNamespace,
-		AnnotationKeyImageName: baseImage,
+		v1alpha1.AnnotationContentID:    contentID,
+		v1alpha1.AnnotationInit:         AnnotationImageFromValue,
+		v1alpha1.AnnotationStorageLimit: AnnotationUseLimitValue,
+		AnnotationKeyNamespace:          DefaultNamespace,
+		AnnotationKeyImageName:          baseImage,
 	}
 
 	containerName := fmt.Sprintf("%s-container", devboxName) // container name
@@ -77,8 +81,7 @@ func (c *CommitterImpl) CreateContainer(ctx context.Context, devboxName string, 
 		client.WithNewSnapshot(containerName, image),
 		client.WithContainerLabels(annotations),        // add annotations
 		client.WithNewSpec(oci.WithImageConfig(image)), // oci.WithProcessArgs("/bin/sh", "-c", "while true; do echo 'Hello, World!'; sleep 5; done"),
-		// oci.WithHostname("test-container"),
-
+		client.WithRuntime(DefaultRuntime, nil),        // runtime name
 	)
 	if err != nil {
 		return "", fmt.Errorf("failed to create container: %v", err)
@@ -125,7 +128,7 @@ func (c *CommitterImpl) DeleteContainer(ctx context.Context, containerName strin
 		return fmt.Errorf("failed to delete container: %v", err)
 	}
 
-	log.Printf("Container deleted: %s", containerName)
+	log.Printf("Container deleted: %s successfully", containerName)
 	return nil
 }
 
@@ -153,7 +156,21 @@ func (c *CommitterImpl) Commit(ctx context.Context, devboxName string, contentID
 			RemoveBaseImageTopLayer: DevboxOptionsRemoveBaseImageTopLayer,
 		},
 	}
-	return container.Commit(ctx, c.containerdClient, commitImage, containerID, opt)
+
+	// commit container
+	err = container.Commit(ctx, c.containerdClient, commitImage, containerID, opt)
+	// if commit failed, delete container
+	if err != nil {
+		// delete container
+		err = c.DeleteContainer(ctx, containerID)
+		if err != nil {
+			log.Printf("Warning: failed to delete container %s: %v", containerID, err)
+		}
+		return fmt.Errorf("failed to commit container: %v", err)
+	}
+
+	// commit success, delete container
+	return c.DeleteContainer(ctx, containerID)
 }
 
 // GetContainerAnnotations get container annotations
@@ -206,7 +223,7 @@ func (h *Handler) GC(ctx context.Context) error {
 			continue
 		}
 		// if container is not devbox container, skip
-		if _, ok := labels[AnnotationKeyContentID]; !ok {
+		if _, ok := labels[v1alpha1.AnnotationContentID]; !ok {
 			continue
 		}
 
@@ -246,7 +263,6 @@ func (h *Handler) GC(ctx context.Context) error {
 				deletedContainersCount++
 			}
 		}
-
 	}
 	log.Printf("GC completed, deleted %d containers", deletedContainersCount)
 	return nil

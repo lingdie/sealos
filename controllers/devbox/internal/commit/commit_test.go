@@ -6,9 +6,10 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/containerd/containerd/v2/pkg/namespaces"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/containerd/containerd/v2/pkg/namespaces"
 )
 
 // init Committer
@@ -150,7 +151,10 @@ func TestConcurrentOperations(t *testing.T) {
 
 	// delete containers
 	for _, containerID := range containers {
-		committer.(*CommitterImpl).DeleteContainer(ctx, containerID)
+		err := committer.(*CommitterImpl).DeleteContainer(ctx, containerID)
+		if err != nil {
+			t.Logf("Warning: failed to delete container %s: %v", containerID, err)
+		}
 	}
 
 	// get current containers list
@@ -161,7 +165,6 @@ func TestConcurrentOperations(t *testing.T) {
 		fmt.Printf("Container ID: %s\n", container.ID())
 	}
 	fmt.Printf("=== Total %d containers ===\n", len(currentContainers))
-
 }
 
 // test gc handler
@@ -210,6 +213,41 @@ func TestGCHandler(t *testing.T) {
 		fmt.Printf("Container ID: %s\n", container.ID())
 	}
 	fmt.Printf("=== Total %d containers ===\n", len(afterContainers))
+}
+
+// test runtime selection
+func TestRuntimeSelection(t *testing.T) {
+	ctx := context.Background()
+	committer, err := NewCommitter()
+	assert.NoError(t, err)
+
+	// create container with specific runtime
+	devboxName := fmt.Sprintf("test-runtime-%d", time.Now().Unix())
+	contentID := "test-runtime-content-id"
+	baseImage := "docker.io/library/busybox:latest"
+
+	containerID, err := committer.(*CommitterImpl).CreateContainer(ctx, devboxName, contentID, baseImage)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, containerID)
+
+	// get container info to verify runtime
+	ctx = namespaces.WithNamespace(ctx, DefaultNamespace)
+	container, err := committer.(*CommitterImpl).containerdClient.LoadContainer(ctx, containerID)
+	assert.NoError(t, err)
+
+	info, err := container.Info(ctx)
+	assert.NoError(t, err)
+
+	fmt.Printf("=== Container Runtime Information ===\n")
+	fmt.Printf("Container ID: %s\n", containerID)
+	fmt.Printf("Runtime Name: %s\n", info.Runtime.Name)
+	fmt.Printf("Runtime Options: %+v\n", info.Runtime.Options)
+	fmt.Printf("Expected Runtime: %s\n", DefaultRuntime)
+	fmt.Printf("Runtime Match: %v\n", info.Runtime.Name == DefaultRuntime)
+
+	// cleanup
+	err = committer.(*CommitterImpl).DeleteContainer(ctx, containerID)
+	assert.NoError(t, err)
 }
 
 // // test large image
