@@ -154,7 +154,7 @@ func (r *DevboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	// and filter out the devbox that are not in the current node
 	if devbox.Spec.State == devboxv1alpha1.DevboxStateRunning {
 		if devbox.Status.CommitRecords[devbox.Status.ContentID].Node == "" {
-			if score := r.getAcceptanceScore(ctx); score >= r.AcceptanceThreshold {
+			if score := r.getAcceptanceScore(ctx, devbox); score >= r.AcceptanceThreshold {
 				// if devbox is not scheduled to node, schedule it to current node
 				logger.Info("devbox not scheduled to node, try scheduling to us now",
 					"nodeName", r.NodeName,
@@ -630,7 +630,7 @@ func (r *DevboxReconciler) getAcceptanceConsideration(ctx context.Context) (help
 	return ac, nil
 }
 
-func (r *DevboxReconciler) getAcceptanceScore(ctx context.Context) int {
+func (r *DevboxReconciler) getAcceptanceScore(ctx context.Context, devbox *devboxv1alpha1.Devbox) int {
 	logger := log.FromContext(ctx)
 	var (
 		ac                  helper.AcceptanceConsideration
@@ -643,6 +643,7 @@ func (r *DevboxReconciler) getAcceptanceScore(ctx context.Context) int {
 		cpuLimitRatio       float64
 		memoryRequestRatio  float64
 		memoryLimitRatio    float64
+		storageLimitBytes   int64
 
 		score int
 	)
@@ -664,12 +665,12 @@ func (r *DevboxReconciler) getAcceptanceScore(ctx context.Context) int {
 	}
 	availableBytes = *containerFsStats.AvailableBytes
 	capacityBytes = *containerFsStats.CapacityBytes
-	if minBytesRequired, ok := r.EphemeralStorage.MaximumLimit.AsInt64(); !ok {
-		logger.Error(err, "failed to get minimum bytes required for ephemeral storage")
-		goto unsuitable // If we can't get the minimum bytes required, we assume the node is not suitable
-	} else if availableBytes < uint64(minBytesRequired) {
-		logger.Info("available bytes less than minimum required", "availableBytes", availableBytes, "minimumRequired", minBytesRequired)
-		goto unsuitable // If available bytes are less than the minimum required, we assume the node is not suitable
+	if storageLimitBytes, err = helper.GetStorageLimitInBytes(devbox); err != nil {
+		logger.Error(err, "failed to get storage limit")
+		goto unsuitable // If we can't get the storage limit, we assume the node is not suitable
+	} else if availableBytes < uint64(storageLimitBytes) {
+		logger.Info("available bytes less than storage limit", "availableBytes", availableBytes, "storageLimitBytes", storageLimitBytes)
+		goto unsuitable // If available bytes are less than the storage limit, we assume the node is not suitable
 	}
 	availablePercentage = float64(availableBytes) / float64(capacityBytes) * 100
 	if availablePercentage > ac.ContainerFSAvailableThreshold {
