@@ -593,31 +593,31 @@ func (r *DevboxReconciler) getAcceptanceConsideration(ctx context.Context) (help
 	ann := node.Annotations
 	ac := helper.AcceptanceConsideration{}
 	if v, err := strconv.ParseFloat(ann[devboxv1alpha1.AnnotationContainerFSAvailableThreshold], 64); err != nil {
-		logger.Error(err, "failed to parse containerfs available threshold. use default value instead", "value", ann[devboxv1alpha1.AnnotationContainerFSAvailableThreshold])
+		logger.Info("failed to parse containerfs available threshold. use default value instead", "value", ann[devboxv1alpha1.AnnotationContainerFSAvailableThreshold])
 		ac.ContainerFSAvailableThreshold = helper.DefaultContainerFSAvailableThreshold
 	} else {
 		ac.ContainerFSAvailableThreshold = v
 	}
 	if v, err := strconv.ParseFloat(ann[devboxv1alpha1.AnnotationCPURequestRatio], 64); err != nil {
-		logger.Error(err, "failed to parse CPU request ratio. use default value instead", "value", ann[devboxv1alpha1.AnnotationCPURequestRatio])
+		logger.Info("failed to parse CPU request ratio. use default value instead", "value", ann[devboxv1alpha1.AnnotationCPURequestRatio])
 		ac.CPURequestRatio = helper.DefaultCPURequestRatio
 	} else {
 		ac.CPURequestRatio = v
 	}
 	if v, err := strconv.ParseFloat(ann[devboxv1alpha1.AnnotationCPULimitRatio], 64); err != nil {
-		logger.Error(err, "failed to parse CPU limit ratio. use default value instead", "value", ann[devboxv1alpha1.AnnotationCPULimitRatio])
+		logger.Info("failed to parse CPU limit ratio. use default value instead", "value", ann[devboxv1alpha1.AnnotationCPULimitRatio])
 		ac.CPULimitRatio = helper.DefaultCPULimitRatio
 	} else {
 		ac.CPULimitRatio = v
 	}
 	if v, err := strconv.ParseFloat(ann[devboxv1alpha1.AnnotationMemoryRequestRatio], 64); err != nil {
-		logger.Error(err, "failed to parse memory request ratio. use default value instead", "value", ann[devboxv1alpha1.AnnotationMemoryRequestRatio])
+		logger.Info("failed to parse memory request ratio. use default value instead", "value", ann[devboxv1alpha1.AnnotationMemoryRequestRatio])
 		ac.MemoryRequestRatio = helper.DefaultMemoryRequestRatio
 	} else {
 		ac.MemoryRequestRatio = v
 	}
 	if v, err := strconv.ParseFloat(ann[devboxv1alpha1.AnnotationMemoryLimitRatio], 64); err != nil {
-		logger.Error(err, "failed to parse memory limit ratio. use default value instead", "value", ann[devboxv1alpha1.AnnotationMemoryLimitRatio])
+		logger.Info("failed to parse memory limit ratio. use default value instead", "value", ann[devboxv1alpha1.AnnotationMemoryLimitRatio])
 		ac.MemoryLimitRatio = helper.DefaultMemoryLimitRatio
 	} else {
 		ac.MemoryLimitRatio = v
