@@ -12,6 +12,7 @@ import (
 	"github.com/containerd/nerdctl/v2/pkg/api/types"
 	"github.com/containerd/nerdctl/v2/pkg/cmd/container"
 	"github.com/containerd/nerdctl/v2/pkg/containerutil"
+	ncdefaults "github.com/containerd/nerdctl/v2/pkg/defaults"
 	"github.com/labring/sealos/controllers/devbox/api/v1alpha1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -54,15 +55,9 @@ func NewCommitter() (Committer, error) {
 func (c *CommitterImpl) CreateContainer(ctx context.Context, devboxName string, contentID string, baseImage string) (string, error) {
 	fmt.Println("========>>>> create container", devboxName, contentID, baseImage)
 	ctx = namespaces.WithNamespace(ctx, DefaultNamespace)
+	global := NewGlobalOptionConfig()
 
-	global := types.GlobalCommandOptions{
-		Namespace:        DefaultNamespace,
-		Address:          DefaultContainerdAddress,
-		DataRoot:         DefaultDataRoot,
-		InsecureRegistry: InsecureRegistry,
-		Snapshotter:      DefaultSnapshotter,
-	}
-
+	// create container with labels
 	originalAnnotations := map[string]string{
 		v1alpha1.AnnotationContentID:    contentID,
 		v1alpha1.AnnotationInit:         AnnotationImageFromValue,
@@ -71,11 +66,13 @@ func (c *CommitterImpl) CreateContainer(ctx context.Context, devboxName string, 
 		AnnotationKeyImageName:          baseImage,
 	}
 
+	// convert labels to "containerd.io/snapshot/devbox-" format
 	convertedLabels := convertLabels(originalAnnotations)
 	convertedAnnotations := convertMapToSlice(originalAnnotations)
 
+	// create container options
 	createOpt := types.ContainerCreateOptions{
-		GOptions:       global,
+		GOptions:       *global,
 		Runtime:        DefaultRuntime, // user devbox runtime
 		Name:           fmt.Sprintf("devbox-%s-container", devboxName),
 		Pull:           "missing",
@@ -163,6 +160,23 @@ func (c *CommitterImpl) DeleteContainer(ctx context.Context, containerName strin
 	return nil
 }
 
+// RemoveContainer remove container
+func (c *CommitterImpl) RemoveContainer(ctx context.Context, containerNames string) error {
+	ctx = namespaces.WithNamespace(ctx, DefaultNamespace)
+	global := NewGlobalOptionConfig()
+	opt := types.ContainerRemoveOptions{
+		Stdout:   io.Discard,
+		Force:    false,
+		Volumes:  false,
+		GOptions: *global,
+	}
+	err := container.Remove(ctx, c.containerdClient, []string{containerNames}, opt)
+	if err != nil {
+		return fmt.Errorf("failed to remove container: %v", err)
+	}
+	return nil
+}
+
 // Commit commit container to image
 func (c *CommitterImpl) Commit(ctx context.Context, devboxName string, contentID string, baseImage string, commitImage string) error {
 	fmt.Println("========>>>> commit devbox", devboxName, contentID, baseImage, commitImage)
@@ -172,16 +186,11 @@ func (c *CommitterImpl) Commit(ctx context.Context, devboxName string, contentID
 		return fmt.Errorf("failed to create container: %v", err)
 	}
 
-	global := types.GlobalCommandOptions{
-		Namespace:        DefaultNamespace,
-		Address:          DefaultContainerdAddress,
-		DataRoot:         DefaultDataRoot,
-		InsecureRegistry: InsecureRegistry,
-	}
-
+	// create commit options
+	global := NewGlobalOptionConfig()
 	opt := types.ContainerCommitOptions{
 		Stdout:   io.Discard,
-		GOptions: global,
+		GOptions: *global,
 		Pause:    PauseContainerDuringCommit,
 		DevboxOptions: types.DevboxOptions{
 			RemoveBaseImageTopLayer: DevboxOptionsRemoveBaseImageTopLayer,
@@ -193,7 +202,7 @@ func (c *CommitterImpl) Commit(ctx context.Context, devboxName string, contentID
 	// if commit failed, delete container
 	if err != nil {
 		// delete container
-		err = c.DeleteContainer(ctx, containerID)
+		err = c.RemoveContainer(ctx, containerID)
 		if err != nil {
 			log.Printf("Warning: failed to delete container %s: %v", containerID, err)
 		}
@@ -201,7 +210,7 @@ func (c *CommitterImpl) Commit(ctx context.Context, devboxName string, contentID
 	}
 
 	// commit success, delete container
-	return c.DeleteContainer(ctx, containerID)
+	return c.RemoveContainer(ctx, containerID)
 }
 
 // GetContainerAnnotations get container annotations
@@ -319,4 +328,29 @@ func convertMapToSlice(labels map[string]string) []string {
 		slice = append(slice, fmt.Sprintf("%s=%s", key, value))
 	}
 	return slice
+}
+
+// NewGlobalOptionConfig new global option config
+func NewGlobalOptionConfig() *types.GlobalCommandOptions {
+	return &types.GlobalCommandOptions{
+		Namespace:        DefaultNamespace,
+		Address:          DefaultContainerdAddress,
+		DataRoot:         DefaultDataRoot,
+		Debug:            false,
+		DebugFull:        false,
+		Snapshotter:      DefaultSnapshotter,
+		CNIPath:          ncdefaults.CNIPath(),
+		CNINetConfPath:   ncdefaults.CNINetConfPath(),
+		CgroupManager:    ncdefaults.CgroupManager(),
+		InsecureRegistry: false,
+		HostsDir:         ncdefaults.HostsDirs(),
+		Experimental:     true,
+		HostGatewayIP:    ncdefaults.HostGatewayIP(),
+		KubeHideDupe:     false,
+		CDISpecDirs:      ncdefaults.CDISpecDirs(),
+		UsernsRemap:      "",
+		DNS:              []string{},
+		DNSOpts:          []string{},
+		DNSSearch:        []string{},
+	}
 }

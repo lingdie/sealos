@@ -98,6 +98,45 @@ func TestDeleteContainer(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// test remove container
+func TestRemoveContainer(t *testing.T) {
+	ctx := context.Background()
+	committer, err := NewCommitter()
+	assert.NoError(t, err)
+	// create a container
+	devboxName := fmt.Sprintf("test-devbox-%d", time.Now().Unix())
+	containerID, err := committer.(*CommitterImpl).CreateContainer(ctx, devboxName, "test-content-id-789", "docker.io/library/alpine:latest")
+	assert.NoError(t, err)
+
+	// show all containers in current namespace
+	ctx = namespaces.WithNamespace(ctx, DefaultNamespace)
+	containers, err := committer.(*CommitterImpl).containerdClient.Containers(ctx)
+	assert.NoError(t, err)
+
+	fmt.Printf("=== All Containers in current namespace ===\n")
+	for _, container := range containers {
+		fmt.Printf("Container ID: %s\n", container.ID())
+	}
+	fmt.Printf("=== Total %d containers ===\n", len(containers))
+
+	// delete container
+	err = committer.(*CommitterImpl).RemoveContainer(ctx, containerID)
+	assert.NoError(t, err)
+
+	containers, err = committer.(*CommitterImpl).containerdClient.Containers(ctx)
+	assert.NoError(t, err)
+
+	fmt.Printf("=== All Containers in current namespace ===\n")
+	for _, container := range containers {
+		fmt.Printf("Container ID: %s\n", container.ID())
+	}
+	fmt.Printf("=== Total %d containers ===\n", len(containers))
+
+	// verify container is deleted (try to get labels should return error)
+	_, err = committer.(*CommitterImpl).GetContainerAnnotations(ctx, containerID)
+	assert.Error(t, err)
+}
+
 // test error cases
 func TestErrorCases(t *testing.T) {
 	ctx := context.Background()
@@ -150,7 +189,7 @@ func TestConcurrentOperations(t *testing.T) {
 
 	// delete containers
 	for _, containerID := range containers {
-		err := committer.(*CommitterImpl).DeleteContainer(ctx, containerID)
+		err := committer.(*CommitterImpl).RemoveContainer(ctx, containerID)
 		if err != nil {
 			t.Logf("Warning: failed to delete container %s: %v", containerID, err)
 		}
