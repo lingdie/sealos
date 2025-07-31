@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"strings"
 
 	"github.com/containerd/containerd/v2/client"
 	"github.com/containerd/containerd/v2/pkg/namespaces"
-	"github.com/containerd/containerd/v2/pkg/oci"
 	"github.com/containerd/nerdctl/v2/pkg/api/types"
 	"github.com/containerd/nerdctl/v2/pkg/cmd/container"
+	"github.com/containerd/nerdctl/v2/pkg/containerutil"
 	"github.com/labring/sealos/controllers/devbox/api/v1alpha1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -49,24 +50,20 @@ func NewCommitter() (Committer, error) {
 	}, nil
 }
 
-// CreateContainer create container
+// CreateContainer create container with labels
 func (c *CommitterImpl) CreateContainer(ctx context.Context, devboxName string, contentID string, baseImage string) (string, error) {
 	fmt.Println("========>>>> create container", devboxName, contentID, baseImage)
-	// 1. get image
 	ctx = namespaces.WithNamespace(ctx, DefaultNamespace)
-	image, err := c.containerdClient.GetImage(ctx, baseImage)
-	if err != nil {
-		// image not found, try to pull
-		log.Printf("Image %s not found, pulling...", baseImage)
-		image, err = c.containerdClient.Pull(ctx, baseImage, client.WithPullUnpack)
-		if err != nil {
-			return "", fmt.Errorf("failed to pull image %s: %v", baseImage, err)
-		}
+
+	global := types.GlobalCommandOptions{
+		Namespace:        DefaultNamespace,
+		Address:          DefaultContainerdAddress,
+		DataRoot:         DefaultDataRoot,
+		InsecureRegistry: InsecureRegistry,
+		Snapshotter:      DefaultSnapshotter,
 	}
 
-	// 2. create container
-	// add annotations/labels
-	annotations := map[string]string{
+	originalAnnotations := map[string]string{
 		v1alpha1.AnnotationContentID:    contentID,
 		v1alpha1.AnnotationInit:         AnnotationImageFromValue,
 		v1alpha1.AnnotationStorageLimit: AnnotationUseLimitValue,
@@ -74,19 +71,53 @@ func (c *CommitterImpl) CreateContainer(ctx context.Context, devboxName string, 
 		AnnotationKeyImageName:          baseImage,
 	}
 
-	containerName := fmt.Sprintf("%s-container", devboxName) // container name
+	convertedLabels := convertLabels(originalAnnotations)
+	convertedAnnotations := convertMapToSlice(originalAnnotations)
 
-	container, err := c.containerdClient.NewContainer(ctx, containerName,
-		client.WithImage(image),
-		client.WithNewSnapshot(containerName, image),
-		client.WithContainerLabels(annotations),        // add annotations
-		client.WithNewSpec(oci.WithImageConfig(image)), // oci.WithProcessArgs("/bin/sh", "-c", "while true; do echo 'Hello, World!'; sleep 5; done"),
-		client.WithRuntime(DefaultRuntime, nil),        // runtime name
-	)
-	if err != nil {
-		return "", fmt.Errorf("failed to create container: %v", err)
+	createOpt := types.ContainerCreateOptions{
+		GOptions:       global,
+		Runtime:        DefaultRuntime, // user devbox runtime
+		Name:           fmt.Sprintf("devbox-%s-container", devboxName),
+		Pull:           "missing",
+		InRun:          false, // not start container
+		Rm:             false,
+		LogDriver:      "json-file",
+		StopSignal:     "SIGTERM",
+		Restart:        "unless-stopped",
+		Interactive:    false,  // not interactive, avoid conflict with Detach
+		Cgroupns:       "host", // add cgroupns mode
+		Detach:         true,   // run in background
+		Rootfs:         false,
+		Label:          convertedAnnotations,
+		SnapshotLabels: convertedLabels,
+		ImagePullOpt: types.ImagePullOptions{
+			GOptions: types.GlobalCommandOptions{
+				Snapshotter: DefaultSnapshotter,
+			},
+		},
 	}
 
+	// create network manager
+	networkManager, err := containerutil.NewNetworkingOptionsManager(createOpt.GOptions,
+		types.NetworkOptions{
+			NetworkSlice: []string{DefaultNetworkMode},
+		}, c.containerdClient)
+	if err != nil {
+		log.Println("failed to create network manager:", err)
+		return "", fmt.Errorf("failed to create network manager: %v", err)
+	}
+
+	// create container
+	container, cleanup, err := container.Create(ctx, c.containerdClient, []string{originalAnnotations[AnnotationKeyImageName]}, networkManager, createOpt)
+	if err != nil {
+		log.Println("failed to create container:", err)
+		return "", fmt.Errorf("failed to create container: %v", err)
+	}
+	if cleanup != nil {
+		defer cleanup()
+	}
+
+	log.Printf("container created successfully: %s\n", container.ID())
 	return container.ID(), nil
 }
 
@@ -266,4 +297,26 @@ func (h *Handler) GC(ctx context.Context) error {
 	}
 	log.Printf("GC completed, deleted %d containers", deletedContainersCount)
 	return nil
+}
+
+// convertLabels convert labels to "containerd.io/snapshot/devbox-" format
+func convertLabels(labels map[string]string) map[string]string {
+	convertedLabels := make(map[string]string)
+	for key, value := range labels {
+		if strings.HasPrefix(key, ContainerLabelPrefix) {
+			// convert "devbox.sealos.io/" to "containerd.io/snapshot/devbox-"
+			newKey := SnapshotLabelPrefix + key[len(ContainerLabelPrefix):]
+			convertedLabels[newKey] = value
+		}
+	}
+	return convertedLabels
+}
+
+// convertMapToSlice convert map to slice
+func convertMapToSlice(labels map[string]string) []string {
+	slice := make([]string, 0, len(labels))
+	for key, value := range labels {
+		slice = append(slice, fmt.Sprintf("%s=%s", key, value))
+	}
+	return slice
 }
