@@ -46,8 +46,8 @@ func TestCreateContainer(t *testing.T) {
 
 	// create container
 	devboxName := fmt.Sprintf("test-devbox-%d", time.Now().Unix())
-	contentID := "903b3c87-1458-4dd8-b0f4-9da7184cf8ca"
-	baseImage := "ghcr.io/labring-actions/devbox/go-1.23.0:13aacd8" // use another public image to test
+	contentID := fmt.Sprintf("test-content-id-%d", time.Now().Unix())
+	baseImage := "docker.io/library/nginx:latest" // use another public image to test
 	containerID, err := committer.(*CommitterImpl).CreateContainer(ctx, devboxName, contentID, baseImage)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, containerID)
