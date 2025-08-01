@@ -46,8 +46,8 @@ func TestCreateContainer(t *testing.T) {
 
 	// create container
 	devboxName := fmt.Sprintf("test-devbox-%d", time.Now().Unix())
-	contentID := fmt.Sprintf("test-content-id-%d", time.Now().Unix())
-	baseImage := "docker.io/library/nginx:latest" // use another public image to test
+	contentID := "903b3c87-1458-4dd8-b0f4-9da7184cf8ca"
+	baseImage := "ghcr.io/labring-actions/devbox/go-1.23.0:13aacd8" // use another public image to test
 	containerID, err := committer.(*CommitterImpl).CreateContainer(ctx, devboxName, contentID, baseImage)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, containerID)
@@ -286,6 +286,52 @@ func TestRuntimeSelection(t *testing.T) {
 	// cleanup
 	err = committer.(*CommitterImpl).DeleteContainer(ctx, containerID)
 	assert.NoError(t, err)
+}
+
+// test connection management
+func TestConnectionManagement(t *testing.T) {
+	ctx := context.Background()
+	committer, err := NewCommitter()
+	assert.NoError(t, err)
+	defer committer.(*CommitterImpl).Close()
+
+	// test connection check
+	err = committer.(*CommitterImpl).CheckConnection(ctx)
+	assert.NoError(t, err)
+
+	// create container
+	devboxName := fmt.Sprintf("test-devbox-%d", time.Now().Unix())
+	contentID := "903b3c87-1458-4dd8-b0f4-9da7184cf8ca"
+	baseImage := "ghcr.io/labring-actions/devbox/go-1.23.0:13aacd8"
+	containerID, err := committer.(*CommitterImpl).CreateContainer(ctx, devboxName, contentID, baseImage)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, containerID)
+
+	// delete container
+	err = committer.(*CommitterImpl).RemoveContainer(ctx, containerID)
+	assert.NoError(t, err)
+
+	// test reconnect
+	err = committer.(*CommitterImpl).Reconnect(ctx)
+	assert.NoError(t, err)
+
+	// create container again
+	containerID, err = committer.(*CommitterImpl).CreateContainer(ctx, devboxName, contentID, baseImage)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, containerID)
+
+	// test connection check again
+	err = committer.(*CommitterImpl).CheckConnection(ctx)
+	assert.NoError(t, err)
+
+	err = committer.(*CommitterImpl).RemoveContainer(ctx, containerID)
+	assert.NoError(t, err)
+
+	// test connection check again
+	err = committer.(*CommitterImpl).CheckConnection(ctx)
+	assert.NoError(t, err)
+
+	fmt.Printf("Connection management test passed\n")
 }
 
 // // test large image
