@@ -105,7 +105,7 @@ func (c *CommitterImpl) CreateContainer(ctx context.Context, devboxName string, 
 	createOpt := types.ContainerCreateOptions{
 		GOptions:       *global,
 		Runtime:        DefaultRuntime, // user devbox runtime
-		Name:           fmt.Sprintf("devbox-%s-container", devboxName),
+		Name:           fmt.Sprintf("devbox-%s-container-%d", devboxName,time.Now().Unix()),
 		Pull:           "missing",
 		InRun:          false, // not start container
 		Rm:             false,
