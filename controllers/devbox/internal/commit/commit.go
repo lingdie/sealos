@@ -15,6 +15,7 @@ import (
 	"github.com/containerd/containerd/v2/pkg/namespaces"
 	"github.com/containerd/nerdctl/v2/pkg/api/types"
 	"github.com/containerd/nerdctl/v2/pkg/cmd/container"
+	"github.com/containerd/nerdctl/v2/pkg/cmd/image"
 	"github.com/containerd/nerdctl/v2/pkg/containerutil"
 	ncdefaults "github.com/containerd/nerdctl/v2/pkg/defaults"
 	"github.com/labring/sealos/controllers/devbox/api/v1alpha1"
@@ -24,8 +25,10 @@ import (
 )
 
 type Committer interface {
-	Commit(ctx context.Context, devboxName string, contentID string, baseImage string, commitImage string) error
+	Commit(ctx context.Context, devboxName string, contentID string, baseImage string, commitImage string) (string, error)
 	Push(ctx context.Context, imageName string) error
+	RemoveImage(ctx context.Context, imageName string, force bool, async bool) error
+	RemoveContainer(ctx context.Context, containerName string) error
 }
 
 type CommitterImpl struct {
@@ -202,6 +205,7 @@ func (c *CommitterImpl) DeleteContainer(ctx context.Context, containerName strin
 
 // RemoveContainer remove container
 func (c *CommitterImpl) RemoveContainer(ctx context.Context, containerNames string) error {
+	fmt.Println("========>>>> remove container", containerNames)
 	ctx = namespaces.WithNamespace(ctx, DefaultNamespace)
 
 	// check connection status, if connection is bad, try to reconnect
@@ -227,12 +231,12 @@ func (c *CommitterImpl) RemoveContainer(ctx context.Context, containerNames stri
 }
 
 // Commit commit container to image
-func (c *CommitterImpl) Commit(ctx context.Context, devboxName string, contentID string, baseImage string, commitImage string) error {
+func (c *CommitterImpl) Commit(ctx context.Context, devboxName string, contentID string, baseImage string, commitImage string) (string, error) {
 	fmt.Println("========>>>> commit devbox", devboxName, contentID, baseImage, commitImage)
 	ctx = namespaces.WithNamespace(ctx, DefaultNamespace)
 	containerID, err := c.CreateContainer(ctx, devboxName, contentID, baseImage)
 	if err != nil {
-		return fmt.Errorf("failed to create container: %v", err)
+		return "", fmt.Errorf("failed to create container: %v", err)
 	}
 
 	// create commit options
@@ -248,18 +252,40 @@ func (c *CommitterImpl) Commit(ctx context.Context, devboxName string, contentID
 
 	// commit container
 	err = container.Commit(ctx, c.containerdClient, commitImage, containerID, opt)
-	// if commit failed, delete container
 	if err != nil {
-		// remove container
-		err = c.RemoveContainer(ctx, containerID)
-		if err != nil {
-			log.Printf("Warning: failed to remove container %s: %v", containerID, err)
-		}
-		return fmt.Errorf("failed to commit container: %v", err)
+		return "", fmt.Errorf("failed to commit container: %v", err)
 	}
 
-	// commit success, delete container
-	return c.RemoveContainer(ctx, containerID)
+	return containerID, nil
+	// // if commit failed, delete container
+	// if err != nil {
+	// 	// remove container
+	// 	err = c.RemoveContainer(ctx, containerID)
+	// 	if err != nil {
+	// 		log.Printf("Warning: failed to remove container %s: %v", containerID, err)
+	// 	}
+	// 	// remove image
+	// 	err = c.RemoveImage(ctx, commitImage, false, false)
+	// 	if err != nil {
+	// 		log.Printf("Warning: failed to remove image %s: %v", commitImage, err)
+	// 	}
+	// 	return fmt.Errorf("failed to commit container: %v", err)
+	// }
+
+	// // commit success, push image and delete image
+	// err = c.Push(ctx, commitImage)
+	// if err != nil {
+	// 	log.Printf("Warning: failed to push image %s: %v", commitImage, err)
+	// }
+	// // err = c.RemoveContainer(ctx, containerID)
+	// // if err != nil {
+	// // 	log.Printf("Warning: failed to remove container %s: %v", containerID, err)
+	// // }
+	// err = c.RemoveImage(ctx, commitImage, false, false)
+	// if err != nil {
+	// 	log.Printf("Warning: failed to remove image %s: %v", commitImage, err)
+	// }
+	// return nil
 }
 
 // GetContainerAnnotations get container annotations
@@ -280,6 +306,7 @@ func (c *CommitterImpl) GetContainerAnnotations(ctx context.Context, containerNa
 
 // Push pushes an image to a remote repository
 func (c *CommitterImpl) Push(ctx context.Context, imageName string) error {
+	fmt.Println("========>>>> push image", imageName)
 	ctx = namespaces.WithNamespace(ctx, DefaultNamespace)
 	//set resolver
 	resolver, err := GetResolver(ctx, c.registryUsername, c.registryPassword)
@@ -304,6 +331,20 @@ func (c *CommitterImpl) Push(ctx context.Context, imageName string) error {
 	}
 	log.Printf("Pushed image success Image: %s\n", imageName)
 	return nil
+}
+
+// RemoveImage remove image
+func (c *CommitterImpl) RemoveImage(ctx context.Context, imageName string, force bool, async bool) error {
+	fmt.Println("========>>>> remove image", imageName)
+	ctx = namespaces.WithNamespace(ctx, DefaultNamespace)
+	global := NewGlobalOptionConfig()
+	opt := types.ImageRemoveOptions{
+		Stdout:   io.Discard,
+		GOptions: *global,
+		Force:    force,
+		Async:    async,
+	}
+	return image.Remove(ctx, c.containerdClient, []string{imageName}, opt)
 }
 
 func GetResolver(ctx context.Context, username string, secret string) (remotes.Resolver, error) {

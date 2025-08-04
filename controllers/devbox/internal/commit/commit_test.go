@@ -14,8 +14,8 @@ import (
 
 const (
 	baseImageBusyBox = "docker.io/library/busybox:latest"
-	baseImageNginx  = "docker.io/library/nginx:latest"
-	baseImageAlpine = "docker.io/library/alpine:latest"
+	baseImageNginx   = "docker.io/library/nginx:latest"
+	baseImageAlpine  = "docker.io/library/alpine:latest"
 )
 
 // init Committer
@@ -39,7 +39,7 @@ func TestCommitFlow(t *testing.T) {
 	commitImage := fmt.Sprintf("test-devbox-commit-%d", time.Now().Unix())
 
 	// 3. create container and commit container
-	err = committer.Commit(ctx, devboxName, contentID, baseImageBusyBox, commitImage)
+	_, err = committer.Commit(ctx, devboxName, contentID, baseImageBusyBox, commitImage)
 	assert.NoError(t, err)
 }
 
@@ -344,24 +344,31 @@ func TestPushToDockerHub(t *testing.T) {
 	// use test registry
 	registryAddr := "docker.io"
 	registryUser := "cunzili"
-	registryPassword := "Docker:669263"
+	registryPassword := "123456789"
 
 	committer, err := NewCommitter(registryAddr, registryUser, registryPassword)
 	if err != nil {
-		t.Skipf("Skip Docker Hub push test: failed to create committer: %v", err)
+		t.Errorf("Skip Docker Hub push test: failed to create committer: %v", err)
 	}
 
 	// create a test image name
-	testImageName := "docker.io/cunzili/cunzili:test-1754277739"
+	testImageName := fmt.Sprintf("docker.io/cunzili/cunzili:test-%d", time.Now().Unix())
 
-	// // create a container and commit it to image
-	// devboxName := fmt.Sprintf("test-dockerhub-%d", time.Now().Unix())
-	// contentID := "test-dockerhub-content-id"
+	// create a container and commit it to image
+	devboxName := fmt.Sprintf("test-dockerhub-%d", time.Now().Unix())
+	contentID := fmt.Sprintf("test-dockerhub-content-id-%d", time.Now().Unix())
 
-	// err = committer.Commit(ctx, devboxName, contentID, baseImage, testImageName)
-	// if err != nil {
-	// 	t.Skipf("Skip Docker Hub push test: failed to create test image: %v", err)
+	containerID, err := committer.Commit(ctx, devboxName, contentID, baseImageBusyBox, testImageName)
+	if err != nil {
+		t.Errorf("Skip Docker Hub push test: failed to create test image: %v", err)
+	}
+	// containers, err := committer.(*CommitterImpl).containerdClient.Containers(ctx)
+	// assert.NoError(t, err)
+	// fmt.Printf("=== All Containers in current namespace ===\n")
+	// for _, container := range containers {
+	// 	fmt.Printf("Container ID: %s\n", container.ID())
 	// }
+	// fmt.Printf("=== Total Containers: %d\n", len(containers))
 
 	// push to Docker Hub
 	err = committer.Push(ctx, testImageName)
@@ -371,6 +378,24 @@ func TestPushToDockerHub(t *testing.T) {
 		fmt.Printf("Successfully pushed image to Docker Hub: %s\n", testImageName)
 		fmt.Printf("You can view the image at: https://hub.docker.com/r/cunzili/cunzili/tags\n")
 	}
+
+	// remove image
+	err = committer.RemoveImage(ctx, testImageName, false, false)
+	assert.NoError(t, err)
+
+	// verify image is deleted
+	_, err = committer.(*CommitterImpl).containerdClient.GetImage(ctx, testImageName)
+	assert.Error(t, err)
+	fmt.Println("can not find image:", testImageName)
+
+	// remove container
+	err = committer.(*CommitterImpl).RemoveContainer(ctx, containerID)
+	assert.NoError(t, err)
+
+	// verify container is deleted
+	_, err = committer.(*CommitterImpl).containerdClient.LoadContainer(ctx, containerID)
+	assert.Error(t, err)
+	fmt.Println("can not find container:", containerID)
 }
 
 // test push without authentication
@@ -394,7 +419,7 @@ func TestPushWithoutAuth(t *testing.T) {
 	devboxName := fmt.Sprintf("test-no-auth-%d", time.Now().Unix())
 	contentID := "test-no-auth-content-id"
 
-	err = committer.Commit(ctx, devboxName, contentID, baseImageBusyBox, testImageName)
+	_, err = committer.Commit(ctx, devboxName, contentID, baseImageBusyBox, testImageName)
 	if err != nil {
 		t.Skipf("Skip no-auth push test: failed to create test image: %v", err)
 	}
@@ -408,4 +433,32 @@ func TestPushWithoutAuth(t *testing.T) {
 	} else {
 		t.Errorf("Push succeeded unexpectedly without authentication")
 	}
+}
+
+// test remove image
+func TestRemoveImage(t *testing.T) {
+	ctx := context.Background()
+	committer, err := NewCommitter("", "", "")
+	assert.NoError(t, err)
+
+	// create a test devbox name and content id
+	devboxName := fmt.Sprintf("test-remove-devbox-%d", time.Now().Unix())
+	contentID := fmt.Sprintf("test-remove-content-id-%d", time.Now().Unix())
+	imageName := fmt.Sprintf("test-remove-image-%d", time.Now().Unix())
+
+	// create a container and commit it to image
+	_, err = committer.Commit(ctx, devboxName, contentID, baseImageBusyBox, imageName)
+	assert.NoError(t, err)
+
+	// // push image
+	// err = committer.Push(ctx, imageName)
+	// assert.NoError(t, err)
+
+	// remove image
+	err = committer.(*CommitterImpl).RemoveImage(ctx, imageName, false, false)
+	assert.NoError(t, err)
+
+	// verify image is deleted
+	_, err = committer.(*CommitterImpl).containerdClient.GetImage(ctx, imageName)
+	assert.Error(t, err)
 }
