@@ -9,6 +9,9 @@ import (
 	"time"
 
 	"github.com/containerd/containerd/v2/client"
+	"github.com/containerd/containerd/v2/core/remotes"
+	"github.com/containerd/containerd/v2/core/remotes/docker"
+	"github.com/containerd/containerd/v2/core/remotes/docker/config"
 	"github.com/containerd/containerd/v2/pkg/namespaces"
 	"github.com/containerd/nerdctl/v2/pkg/api/types"
 	"github.com/containerd/nerdctl/v2/pkg/cmd/container"
@@ -22,16 +25,20 @@ import (
 
 type Committer interface {
 	Commit(ctx context.Context, devboxName string, contentID string, baseImage string, commitImage string) error
+	Push(ctx context.Context, imageName string) error
 }
 
 type CommitterImpl struct {
 	runtimeServiceClient runtimeapi.RuntimeServiceClient // CRI client
 	containerdClient     *client.Client                  // containerd client
 	conn                 *grpc.ClientConn                // gRPC connection
+	registryAddr         string
+	registryUsername     string
+	registryPassword     string
 }
 
-// NewCommitter new a CommitterImpl
-func NewCommitter() (Committer, error) {
+// NewCommitter new a CommitterImpl with registry configuration
+func NewCommitter(registryAddr, registryUsername, registryPassword string) (Committer, error) {
 	var conn *grpc.ClientConn
 	var err error
 
@@ -70,6 +77,9 @@ func NewCommitter() (Committer, error) {
 		runtimeServiceClient: runtimeServiceClient,
 		containerdClient:     containerdClient,
 		conn:                 conn,
+		registryAddr:         registryAddr,
+		registryUsername:     registryUsername,
+		registryPassword:     registryPassword,
 	}, nil
 }
 
@@ -105,7 +115,7 @@ func (c *CommitterImpl) CreateContainer(ctx context.Context, devboxName string, 
 	createOpt := types.ContainerCreateOptions{
 		GOptions:       *global,
 		Runtime:        DefaultRuntime, // user devbox runtime
-		Name:           fmt.Sprintf("devbox-%s-container-%d", devboxName,time.Now().Unix()),
+		Name:           fmt.Sprintf("devbox-%s-container-%d", devboxName, time.Now().Unix()),
 		Pull:           "missing",
 		InRun:          false, // not start container
 		Rm:             false,
@@ -240,10 +250,10 @@ func (c *CommitterImpl) Commit(ctx context.Context, devboxName string, contentID
 	err = container.Commit(ctx, c.containerdClient, commitImage, containerID, opt)
 	// if commit failed, delete container
 	if err != nil {
-		// delete container
+		// remove container
 		err = c.RemoveContainer(ctx, containerID)
 		if err != nil {
-			log.Printf("Warning: failed to delete container %s: %v", containerID, err)
+			log.Printf("Warning: failed to remove container %s: %v", containerID, err)
 		}
 		return fmt.Errorf("failed to commit container: %v", err)
 	}
@@ -266,6 +276,53 @@ func (c *CommitterImpl) GetContainerAnnotations(ctx context.Context, containerNa
 		return nil, fmt.Errorf("failed to get container labels: %v", err)
 	}
 	return labels, nil
+}
+
+// Push pushes an image to a remote repository
+func (c *CommitterImpl) Push(ctx context.Context, imageName string) error {
+	ctx = namespaces.WithNamespace(ctx, DefaultNamespace)
+	//set resolver
+	resolver, err := GetResolver(ctx, c.registryUsername, c.registryPassword)
+	if err != nil {
+		log.Printf("failed to set resolver, Image: %s, err: %v\n", imageName, err)
+		return err
+	}
+
+	imageRef, err := c.containerdClient.GetImage(ctx, imageName)
+	if err != nil {
+		log.Printf("failed to get image: %s, err: %v\n", imageName, err)
+		return err
+	}
+
+	// push image
+	err = c.containerdClient.Push(ctx, imageName, imageRef.Target(),
+		client.WithResolver(resolver),
+	)
+	if err != nil {
+		log.Printf("failed to push image: %s, err: %v\n", imageName, err)
+		return err
+	}
+	log.Printf("Pushed image success Image: %s\n", imageName)
+	return nil
+}
+
+func GetResolver(ctx context.Context, username string, secret string) (remotes.Resolver, error) {
+	resolverOptions := docker.ResolverOptions{
+		Tracker: docker.NewInMemoryTracker(),
+	}
+	hostOptions := config.HostOptions{}
+	if username == "" && secret == "" {
+		hostOptions.Credentials = nil
+	} else {
+		// TODO: fix this, use flags or configs to set mulit registry credentials
+		hostOptions.Credentials = func(host string) (string, string, error) {
+			return username, secret, nil
+		}
+	}
+	hostOptions.DefaultScheme = "http"
+	hostOptions.DefaultTLS = nil
+	resolverOptions.Hosts = config.ConfigureHosts(ctx, hostOptions)
+	return docker.NewResolver(resolverOptions), nil
 }
 
 type GcHandler interface {
