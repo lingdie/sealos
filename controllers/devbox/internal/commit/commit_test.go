@@ -212,7 +212,6 @@ func TestConcurrentOperations(t *testing.T) {
 	fmt.Printf("=== Total %d containers ===\n", len(currentContainers))
 }
 
-
 // test runtime selection
 func TestRuntimeSelection(t *testing.T) {
 	ctx := context.Background()
