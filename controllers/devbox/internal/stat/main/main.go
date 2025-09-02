@@ -38,7 +38,10 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			lvmmonitorserver.StartLVMMonitorServer(ctx, *grpcPort)
+			if err := lvmmonitorserver.StartLVMMonitorServer(ctx, *grpcPort); err != nil {
+				logger.Error("failed to start LVM monitor server", "error", err)
+				cancel()
+			}
 		}()
 	}
 

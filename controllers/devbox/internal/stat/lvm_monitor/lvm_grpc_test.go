@@ -25,7 +25,9 @@ func TestGRPCServerAvailability(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		lvmmonitorserver.StartLVMMonitorServer(ctx, grpcPort)
+		if err := lvmmonitorserver.StartLVMMonitorServer(ctx, grpcPort); err != nil {
+			t.Errorf("failed to start LVM monitor server: %v", err)
+		}
 	}()
 
 	// wait for server to start

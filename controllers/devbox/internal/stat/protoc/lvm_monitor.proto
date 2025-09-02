@@ -1,0 +1,158 @@
+syntax = "proto3";
+
+package lvmmonitor;
+
+option go_package = "github.com/labring/sealos/controllers/devbox/internal/stat/proto";
+
+service LVMMonitorService {
+  // get thin pool metrics 
+  rpc GetThinPoolMetrics(GetThinPoolMetricsRequest) returns (GetThinPoolMetricsResponse);
+  
+  // get thin pool stats 
+  rpc GetThinPoolStats(GetThinPoolStatsRequest) returns (GetThinPoolStatsResponse);
+  
+  // get VG info 
+  rpc GetVolumeGroupInfo(GetVolumeGroupInfoRequest) returns (GetVolumeGroupInfoResponse);
+
+  // get container filesystem stats
+  rpc GetContainerFsStats(GetContainerFsStatsRequest) returns (GetContainerFsStatsResponse);
+  
+  // healthy check 
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+message GetThinPoolMetricsRequest {
+  string thin_pool_name = 1;  
+  string node_name = 2;       
+  string vg_name = 3;         
+}
+
+message GetThinPoolMetricsResponse {
+  repeated ThinPoolMetricsProto metrics = 1;
+  string error = 2;
+}
+
+message GetThinPoolStatsRequest {
+  string thin_pool_name = 1;
+  string node_name = 2;
+}
+
+message GetThinPoolStatsResponse {
+  repeated ThinPoolStatsProto stats = 1;
+  string error = 2;
+}
+
+message GetVolumeGroupInfoRequest {
+  string vg_name = 1;
+  string node_name = 2;
+}
+
+message GetVolumeGroupInfoResponse {
+  repeated VolumeGroupInfoProto vgs = 1;
+  string error = 2;
+}
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  bool healthy = 1;
+  string message = 2;
+}
+
+// ThinPoolMetrics protobuf 
+message ThinPoolMetricsProto {
+  int64 timestamp = 1;
+  string thin_pool_name = 2;
+  string node_name = 3;
+  string vg_name = 4;
+  string uuid = 5;
+  int32 health_status = 6;
+  string active_status = 7;
+  string pool_name = 8;
+  
+  // Capacity metrics
+  int64 total_size = 9;
+  int64 used_size = 10;
+  int64 vg_free_size = 11;
+  int64 metadata_size = 12;
+  int64 metadata_used_size = 13;
+  int64 metadata_free_size = 14;
+  
+  // Usage metrics
+  double data_percent = 15;
+  double metadata_used_percent = 16;
+  double snapshot_used_percent = 17;
+  
+  // Snapshot metrics
+  int32 snapshot_count = 18;
+  int64 snapshot_size = 19;
+  
+  // Performance metrics
+  int64 read_iops = 20;
+  int64 write_iops = 21;
+  double read_latency = 22;
+  double write_latency = 23;
+}
+
+// ThinPoolStats protobuf
+message ThinPoolStatsProto {
+  int64 timestamp = 1;
+  string thin_pool_name = 2;
+  string node_name = 3;
+  string vg_name = 4;
+  string uuid = 5;
+  int32 health_status = 6;
+  string active_status = 7;
+  string pool_name = 8;
+  
+  // Capacity metrics
+  int64 total_size = 9;
+  int64 used_size = 10;
+  int64 vg_free_size = 11;
+  int64 metadata_size = 12;
+  int64 metadata_used_size = 13;
+  int64 metadata_free_size = 14;
+  
+  // Usage metrics
+  double data_percent = 15;
+  double metadata_used_percent = 16;
+  double snapshot_used_percent = 17;
+  
+  // Snapshot metrics
+  int32 snapshot_count = 18;
+  int64 snapshot_size = 19;
+  
+  // Performance metrics
+  int64 read_iops = 20;
+  int64 write_iops = 21;
+  double read_latency = 22;
+  double write_latency = 23;
+}
+
+message VolumeGroupInfoProto {
+  string name = 1;
+  string uuid = 2;
+  int64 total_size = 3;
+  int64 free_size = 4;
+  int64 used_size = 5;
+  string status = 6;
+  string node_name = 7;
+}
+
+message GetContainerFsStatsRequest {
+}
+
+message GetContainerFsStatsResponse {
+  FsStatsProto stats = 1;
+  string error = 2;
+}
+
+message FsStatsProto {
+  int64 timestamp = 1;
+  uint64 available_bytes = 2;
+  uint64 capacity_bytes = 3;
+  uint64 used_bytes = 4;
+  uint64 inodes_free = 5;
+  uint64 inodes = 6;
+  uint64 inodes_used = 7;
+}

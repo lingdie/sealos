@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"syscall"
 	"time"
@@ -129,8 +128,8 @@ func (n *NodeStatsProviderImpl) ContainerFsStats(ctx context.Context) (FsStats, 
 
 	var stat syscall.Statfs_t
 	if err := syscall.Statfs(thinPoolPath, &stat); err == nil {
-		totalInodes = uint64(stat.Files)
-		freeInodes = uint64(stat.Ffree)
+		totalInodes = stat.Files
+		freeInodes = stat.Ffree
 		usedInodes = totalInodes - freeInodes
 	} else {
 		// if cannot get inode information, use default value
@@ -230,21 +229,6 @@ func (n *NodeStatsProviderImpl) collectThinPoolMetrics() ([]*ThinPoolMetrics, er
 	}
 
 	return thinPools, nil
-}
-
-// getNodeName gets the current node name
-func getNodeName() string {
-	// Try to get from environment variable first
-	if nodeName := os.Getenv("NODE_NAME"); nodeName != "" {
-		return nodeName
-	}
-
-	// Fallback to hostname
-	if hostname, err := os.Hostname(); err == nil {
-		return hostname
-	}
-
-	return "unknown"
 }
 
 // exportToVictoriaMetrics exports the thin pool metrics to VictoriaMetrics
