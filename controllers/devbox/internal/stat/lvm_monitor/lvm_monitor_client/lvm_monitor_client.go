@@ -45,7 +45,7 @@ func NewLVMClient(config *LVMClientConfig) (*LVMClient, error) {
 		config = DefaultLVMClientConfig()
 	}
 
-	conn, err := grpc.NewClient(config.Address, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithTimeout(config.Timeout))
+	conn, err := grpc.NewClient(config.Address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create gRPC connection: %w", err)
 	}
@@ -58,7 +58,10 @@ func NewLVMClient(config *LVMClientConfig) (*LVMClient, error) {
 		timeout:      config.Timeout,
 	}
 
-	if err := client.HealthCheck(context.Background()); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), config.Timeout)
+	defer cancel()
+
+	if err := client.HealthCheck(ctx); err != nil {
 		client.Close()
 		return nil, fmt.Errorf("failed to check health: %w", err)
 	}
@@ -153,7 +156,6 @@ func (c *LVMClient) GetContainerFsStats(ctx context.Context) (*stat.FsStats, err
 
 // convertFromProto converts the ThinPoolMetricsProto to the ThinPoolMetrics
 func convertFromProto(protoMetric *pb.ThinPoolMetricsProto) *stat.ThinPoolMetrics {
-
 	return &stat.ThinPoolMetrics{
 		Timestamp:           time.Unix(protoMetric.Timestamp, 0),
 		ThinPoolName:        protoMetric.ThinPoolName,
