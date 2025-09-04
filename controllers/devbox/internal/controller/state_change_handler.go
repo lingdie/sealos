@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -19,6 +20,8 @@ import (
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+var commitMap = sync.Map{}
 
 type StateChangeHandler struct {
 	Committer           commit.Committer
@@ -67,11 +70,13 @@ func (h *StateChangeHandler) Handle(ctx context.Context, event *corev1.Event) er
 
 	if needsCommit {
 		// Check if commit is already in progress to prevent duplicate requests
-		if devbox.Status.CommitRecords[devbox.Status.ContentID].CommitStatus == devboxv1alpha2.CommitStatusCommitting {
+		if _, ok := commitMap.Load(devbox.Status.ContentID); ok {
 			h.Logger.Info("commit already in progress, skipping duplicate request", "devbox", devbox.Name, "contentID", devbox.Status.ContentID)
 			return nil
 		}
-		if err := h.commitDevbox(ctx, devbox); err != nil {
+		commitMap.Store(devbox.Status.ContentID, true)
+		if err := h.commitDevbox(ctx, devbox, targetState); err != nil {
+			commitMap.Delete(devbox.Status.ContentID)
 			h.Logger.Error(err, "failed to commit devbox", "devbox", devbox.Name)
 			return err
 		}
@@ -87,7 +92,12 @@ func (h *StateChangeHandler) Handle(ctx context.Context, event *corev1.Event) er
 	return nil
 }
 
-func (h *StateChangeHandler) commitDevbox(ctx context.Context, devbox *devboxv1alpha2.Devbox) error {
+func (h *StateChangeHandler) commitDevbox(ctx context.Context, devbox *devboxv1alpha2.Devbox, targetState devboxv1alpha2.DevboxState) error {
+	defer commitMap.Delete(devbox.Status.ContentID)
+	if err := h.Client.Get(ctx, types.NamespacedName{Namespace: devbox.Namespace, Name: devbox.Name}, devbox); err != nil {
+		h.Logger.Error(err, "failed to get devbox", "devbox", devbox.Name)
+		return err
+	}
 	// do commit, update devbox commit record, update devbox status state to shutdown, add a new commit record for the new content id
 	// step 0: set commit status to committing to prevent duplicate requests
 	devbox.Status.CommitRecords[devbox.Status.ContentID].CommitStatus = devboxv1alpha2.CommitStatusCommitting
@@ -98,6 +108,10 @@ func (h *StateChangeHandler) commitDevbox(ctx context.Context, devbox *devboxv1a
 	}
 	h.Logger.Info("set commit status to committing", "devbox", devbox.Name, "contentID", devbox.Status.ContentID)
 
+	if err := h.Client.Get(ctx, types.NamespacedName{Namespace: devbox.Namespace, Name: devbox.Name}, devbox); err != nil {
+		h.Logger.Error(err, "failed to get devbox", "devbox", devbox.Name)
+		return err
+	}
 	// step 1: do commit, push image, remove container whether commit success or not
 	baseImage := devbox.Status.CommitRecords[devbox.Status.ContentID].BaseImage
 	commitImage := devbox.Status.CommitRecords[devbox.Status.ContentID].CommitImage
@@ -121,6 +135,10 @@ func (h *StateChangeHandler) commitDevbox(ctx context.Context, devbox *devboxv1a
 		}
 		return err
 	}
+	if err := h.Client.Get(ctx, types.NamespacedName{Namespace: devbox.Namespace, Name: devbox.Name}, devbox); err != nil {
+		h.Logger.Error(err, "failed to get devbox", "devbox", devbox.Name)
+		return err
+	}
 	if err := h.Committer.Push(ctx, commitImage); err != nil {
 		h.Logger.Error(err, "failed to push commit image", "commitImage", commitImage)
 		// Update commit status to failed on push error
@@ -139,7 +157,7 @@ func (h *StateChangeHandler) commitDevbox(ctx context.Context, devbox *devboxv1a
 	devbox.Status.CommitRecords[devbox.Status.ContentID].CommitStatus = devboxv1alpha2.CommitStatusSuccess
 	devbox.Status.CommitRecords[devbox.Status.ContentID].CommitTime = metav1.Now()
 	// step 3: update devbox status state to shutdown
-	devbox.Status.State = devboxv1alpha2.DevboxStateShutdown
+	devbox.Status.State = targetState
 	// step 4: add a new commit record for the new content id
 	// make sure that always have a new commit record for shutdown state
 	devbox.Status.ContentID = uuid.New().String()
@@ -150,8 +168,9 @@ func (h *StateChangeHandler) commitDevbox(ctx context.Context, devbox *devboxv1a
 		CommitImage:  h.generateImageName(devbox),
 		GenerateTime: metav1.Now(),
 	}
+	devbox.Status.Node = ""
 	h.Logger.Info("update devbox status to shutdown", "devbox", devbox.Name)
-	if err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		return h.Client.Status().Update(ctx, devbox)
 	}); err != nil {
 		h.Logger.Error(err, "failed to update devbox status", "devbox", devbox.Name)

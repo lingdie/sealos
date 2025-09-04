@@ -133,10 +133,6 @@ type DevboxSpec struct {
 	// +kubebuilder:validation:Required
 	Resource corev1.ResourceList `json:"resource"`
 
-	// +kubebuilder:validation:Optional
-	// +kubebuilder:default=false
-	Squash bool `json:"squash"`
-
 	// +kubebuilder:validation:Required
 	Image string `json:"image"`
 
@@ -253,6 +249,8 @@ type DevboxStatus struct {
 	// +kubebuilder:validation:Optional
 	ContentID string `json:"contentID"`
 	// +kubebuilder:validation:Optional
+	Node string `json:"node"`
+	// +kubebuilder:validation:Optional
 	// +kubebuilder:default=Running
 	State DevboxState `json:"state"`
 	// CommitRecords is the records of the devbox commits
@@ -261,6 +259,9 @@ type DevboxStatus struct {
 	Phase DevboxPhase `json:"phase"`
 	// +kubebuilder:validation:Optional
 	Network NetworkStatus `json:"network"`
+
+	// +kubebuilder:validation:Optional
+	LastContainerStatus corev1.ContainerStatus `json:"lastContainerStatus"`
 }
 
 // +kubebuilder:object:root=true
@@ -269,6 +270,7 @@ type DevboxStatus struct {
 // +kubebuilder:printcolumn:name="NetworkType",type="string",JSONPath=".status.network.type"
 // +kubebuilder:printcolumn:name="NodePort",type="integer",JSONPath=".status.network.nodePort"
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
+// +kubebuilder:printcolumn:name="Node",type="string",JSONPath=".status.node"
 
 // Devbox is the Schema for the devboxes API
 type Devbox struct {
