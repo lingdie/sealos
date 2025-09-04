@@ -112,9 +112,9 @@ func TestGenerateContinuousMetrics(t *testing.T) {
 				MetadataFreeSize: int64(203334449 - i*5000000),     // decrease with time
 
 				// usage rate metrics - simulate fluctuation
-				DataPercent:         float64(1.73 + float64(i)*0.1 + float64(i%3)*0.05), // 波动增长
-				MetadataUsedPercent: float64(0.8 + float64(i)*0.05 + float64(i%2)*0.02), // 波动增长
-				SnapshotUsedPercent: float64(0.5 + float64(i)*0.02 + float64(i%4)*0.01), // 波动增长
+				DataPercent:         float64(1.73 + float64(i)*0.1 + float64(i%3)*0.05), 
+				MetadataUsedPercent: float64(0.8 + float64(i)*0.05 + float64(i%2)*0.02), 
+				SnapshotUsedPercent: float64(0.5 + float64(i)*0.02 + float64(i%4)*0.01), 
 
 				// // snapshot metrics
 				// SnapshotCount:       int(10 + i), // increase with time

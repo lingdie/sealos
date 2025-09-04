@@ -971,6 +971,186 @@ func (x *VolumeGroupInfoProto) GetNodeName() string {
 	return ""
 }
 
+type GetContainerFsStatsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetContainerFsStatsRequest) Reset() {
+	*x = GetContainerFsStatsRequest{}
+	mi := &file_lvm_monitor_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetContainerFsStatsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetContainerFsStatsRequest) ProtoMessage() {}
+
+func (x *GetContainerFsStatsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_lvm_monitor_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetContainerFsStatsRequest.ProtoReflect.Descriptor instead.
+func (*GetContainerFsStatsRequest) Descriptor() ([]byte, []int) {
+	return file_lvm_monitor_proto_rawDescGZIP(), []int{11}
+}
+
+type GetContainerFsStatsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Stats         *FsStatsProto          `protobuf:"bytes,1,opt,name=stats,proto3" json:"stats,omitempty"`
+	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetContainerFsStatsResponse) Reset() {
+	*x = GetContainerFsStatsResponse{}
+	mi := &file_lvm_monitor_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetContainerFsStatsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetContainerFsStatsResponse) ProtoMessage() {}
+
+func (x *GetContainerFsStatsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_lvm_monitor_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetContainerFsStatsResponse.ProtoReflect.Descriptor instead.
+func (*GetContainerFsStatsResponse) Descriptor() ([]byte, []int) {
+	return file_lvm_monitor_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *GetContainerFsStatsResponse) GetStats() *FsStatsProto {
+	if x != nil {
+		return x.Stats
+	}
+	return nil
+}
+
+func (x *GetContainerFsStatsResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+type FsStatsProto struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Timestamp      int64                  `protobuf:"varint,1,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	AvailableBytes uint64                 `protobuf:"varint,2,opt,name=available_bytes,json=availableBytes,proto3" json:"available_bytes,omitempty"`
+	CapacityBytes  uint64                 `protobuf:"varint,3,opt,name=capacity_bytes,json=capacityBytes,proto3" json:"capacity_bytes,omitempty"`
+	UsedBytes      uint64                 `protobuf:"varint,4,opt,name=used_bytes,json=usedBytes,proto3" json:"used_bytes,omitempty"`
+	InodesFree     uint64                 `protobuf:"varint,5,opt,name=inodes_free,json=inodesFree,proto3" json:"inodes_free,omitempty"`
+	Inodes         uint64                 `protobuf:"varint,6,opt,name=inodes,proto3" json:"inodes,omitempty"`
+	InodesUsed     uint64                 `protobuf:"varint,7,opt,name=inodes_used,json=inodesUsed,proto3" json:"inodes_used,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *FsStatsProto) Reset() {
+	*x = FsStatsProto{}
+	mi := &file_lvm_monitor_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FsStatsProto) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FsStatsProto) ProtoMessage() {}
+
+func (x *FsStatsProto) ProtoReflect() protoreflect.Message {
+	mi := &file_lvm_monitor_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FsStatsProto.ProtoReflect.Descriptor instead.
+func (*FsStatsProto) Descriptor() ([]byte, []int) {
+	return file_lvm_monitor_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *FsStatsProto) GetTimestamp() int64 {
+	if x != nil {
+		return x.Timestamp
+	}
+	return 0
+}
+
+func (x *FsStatsProto) GetAvailableBytes() uint64 {
+	if x != nil {
+		return x.AvailableBytes
+	}
+	return 0
+}
+
+func (x *FsStatsProto) GetCapacityBytes() uint64 {
+	if x != nil {
+		return x.CapacityBytes
+	}
+	return 0
+}
+
+func (x *FsStatsProto) GetUsedBytes() uint64 {
+	if x != nil {
+		return x.UsedBytes
+	}
+	return 0
+}
+
+func (x *FsStatsProto) GetInodesFree() uint64 {
+	if x != nil {
+		return x.InodesFree
+	}
+	return 0
+}
+
+func (x *FsStatsProto) GetInodes() uint64 {
+	if x != nil {
+		return x.Inodes
+	}
+	return 0
+}
+
+func (x *FsStatsProto) GetInodesUsed() uint64 {
+	if x != nil {
+		return x.InodesUsed
+	}
+	return 0
+}
+
 var File_lvm_monitor_proto protoreflect.FileDescriptor
 
 const file_lvm_monitor_proto_rawDesc = "" +
@@ -1064,11 +1244,27 @@ const file_lvm_monitor_proto_rawDesc = "" +
 	"\tfree_size\x18\x04 \x01(\x03R\bfreeSize\x12\x1b\n" +
 	"\tused_size\x18\x05 \x01(\x03R\busedSize\x12\x16\n" +
 	"\x06status\x18\x06 \x01(\tR\x06status\x12\x1b\n" +
-	"\tnode_name\x18\a \x01(\tR\bnodeName2\x8c\x03\n" +
+	"\tnode_name\x18\a \x01(\tR\bnodeName\"\x1c\n" +
+	"\x1aGetContainerFsStatsRequest\"c\n" +
+	"\x1bGetContainerFsStatsResponse\x12.\n" +
+	"\x05stats\x18\x01 \x01(\v2\x18.lvmmonitor.FsStatsProtoR\x05stats\x12\x14\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\"\xf5\x01\n" +
+	"\fFsStatsProto\x12\x1c\n" +
+	"\ttimestamp\x18\x01 \x01(\x03R\ttimestamp\x12'\n" +
+	"\x0favailable_bytes\x18\x02 \x01(\x04R\x0eavailableBytes\x12%\n" +
+	"\x0ecapacity_bytes\x18\x03 \x01(\x04R\rcapacityBytes\x12\x1d\n" +
+	"\n" +
+	"used_bytes\x18\x04 \x01(\x04R\tusedBytes\x12\x1f\n" +
+	"\vinodes_free\x18\x05 \x01(\x04R\n" +
+	"inodesFree\x12\x16\n" +
+	"\x06inodes\x18\x06 \x01(\x04R\x06inodes\x12\x1f\n" +
+	"\vinodes_used\x18\a \x01(\x04R\n" +
+	"inodesUsed2\xf4\x03\n" +
 	"\x11LVMMonitorService\x12c\n" +
 	"\x12GetThinPoolMetrics\x12%.lvmmonitor.GetThinPoolMetricsRequest\x1a&.lvmmonitor.GetThinPoolMetricsResponse\x12]\n" +
 	"\x10GetThinPoolStats\x12#.lvmmonitor.GetThinPoolStatsRequest\x1a$.lvmmonitor.GetThinPoolStatsResponse\x12c\n" +
-	"\x12GetVolumeGroupInfo\x12%.lvmmonitor.GetVolumeGroupInfoRequest\x1a&.lvmmonitor.GetVolumeGroupInfoResponse\x12N\n" +
+	"\x12GetVolumeGroupInfo\x12%.lvmmonitor.GetVolumeGroupInfoRequest\x1a&.lvmmonitor.GetVolumeGroupInfoResponse\x12f\n" +
+	"\x13GetContainerFsStats\x12&.lvmmonitor.GetContainerFsStatsRequest\x1a'.lvmmonitor.GetContainerFsStatsResponse\x12N\n" +
 	"\vHealthCheck\x12\x1e.lvmmonitor.HealthCheckRequest\x1a\x1f.lvmmonitor.HealthCheckResponseBBZ@github.com/labring/sealos/controllers/devbox/internal/stat/protob\x06proto3"
 
 var (
@@ -1083,37 +1279,43 @@ func file_lvm_monitor_proto_rawDescGZIP() []byte {
 	return file_lvm_monitor_proto_rawDescData
 }
 
-var file_lvm_monitor_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_lvm_monitor_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_lvm_monitor_proto_goTypes = []any{
-	(*GetThinPoolMetricsRequest)(nil),  // 0: lvmmonitor.GetThinPoolMetricsRequest
-	(*GetThinPoolMetricsResponse)(nil), // 1: lvmmonitor.GetThinPoolMetricsResponse
-	(*GetThinPoolStatsRequest)(nil),    // 2: lvmmonitor.GetThinPoolStatsRequest
-	(*GetThinPoolStatsResponse)(nil),   // 3: lvmmonitor.GetThinPoolStatsResponse
-	(*GetVolumeGroupInfoRequest)(nil),  // 4: lvmmonitor.GetVolumeGroupInfoRequest
-	(*GetVolumeGroupInfoResponse)(nil), // 5: lvmmonitor.GetVolumeGroupInfoResponse
-	(*HealthCheckRequest)(nil),         // 6: lvmmonitor.HealthCheckRequest
-	(*HealthCheckResponse)(nil),        // 7: lvmmonitor.HealthCheckResponse
-	(*ThinPoolMetricsProto)(nil),       // 8: lvmmonitor.ThinPoolMetricsProto
-	(*ThinPoolStatsProto)(nil),         // 9: lvmmonitor.ThinPoolStatsProto
-	(*VolumeGroupInfoProto)(nil),       // 10: lvmmonitor.VolumeGroupInfoProto
+	(*GetThinPoolMetricsRequest)(nil),   // 0: lvmmonitor.GetThinPoolMetricsRequest
+	(*GetThinPoolMetricsResponse)(nil),  // 1: lvmmonitor.GetThinPoolMetricsResponse
+	(*GetThinPoolStatsRequest)(nil),     // 2: lvmmonitor.GetThinPoolStatsRequest
+	(*GetThinPoolStatsResponse)(nil),    // 3: lvmmonitor.GetThinPoolStatsResponse
+	(*GetVolumeGroupInfoRequest)(nil),   // 4: lvmmonitor.GetVolumeGroupInfoRequest
+	(*GetVolumeGroupInfoResponse)(nil),  // 5: lvmmonitor.GetVolumeGroupInfoResponse
+	(*HealthCheckRequest)(nil),          // 6: lvmmonitor.HealthCheckRequest
+	(*HealthCheckResponse)(nil),         // 7: lvmmonitor.HealthCheckResponse
+	(*ThinPoolMetricsProto)(nil),        // 8: lvmmonitor.ThinPoolMetricsProto
+	(*ThinPoolStatsProto)(nil),          // 9: lvmmonitor.ThinPoolStatsProto
+	(*VolumeGroupInfoProto)(nil),        // 10: lvmmonitor.VolumeGroupInfoProto
+	(*GetContainerFsStatsRequest)(nil),  // 11: lvmmonitor.GetContainerFsStatsRequest
+	(*GetContainerFsStatsResponse)(nil), // 12: lvmmonitor.GetContainerFsStatsResponse
+	(*FsStatsProto)(nil),                // 13: lvmmonitor.FsStatsProto
 }
 var file_lvm_monitor_proto_depIdxs = []int32{
 	8,  // 0: lvmmonitor.GetThinPoolMetricsResponse.metrics:type_name -> lvmmonitor.ThinPoolMetricsProto
 	9,  // 1: lvmmonitor.GetThinPoolStatsResponse.stats:type_name -> lvmmonitor.ThinPoolStatsProto
 	10, // 2: lvmmonitor.GetVolumeGroupInfoResponse.vgs:type_name -> lvmmonitor.VolumeGroupInfoProto
-	0,  // 3: lvmmonitor.LVMMonitorService.GetThinPoolMetrics:input_type -> lvmmonitor.GetThinPoolMetricsRequest
-	2,  // 4: lvmmonitor.LVMMonitorService.GetThinPoolStats:input_type -> lvmmonitor.GetThinPoolStatsRequest
-	4,  // 5: lvmmonitor.LVMMonitorService.GetVolumeGroupInfo:input_type -> lvmmonitor.GetVolumeGroupInfoRequest
-	6,  // 6: lvmmonitor.LVMMonitorService.HealthCheck:input_type -> lvmmonitor.HealthCheckRequest
-	1,  // 7: lvmmonitor.LVMMonitorService.GetThinPoolMetrics:output_type -> lvmmonitor.GetThinPoolMetricsResponse
-	3,  // 8: lvmmonitor.LVMMonitorService.GetThinPoolStats:output_type -> lvmmonitor.GetThinPoolStatsResponse
-	5,  // 9: lvmmonitor.LVMMonitorService.GetVolumeGroupInfo:output_type -> lvmmonitor.GetVolumeGroupInfoResponse
-	7,  // 10: lvmmonitor.LVMMonitorService.HealthCheck:output_type -> lvmmonitor.HealthCheckResponse
-	7,  // [7:11] is the sub-list for method output_type
-	3,  // [3:7] is the sub-list for method input_type
-	3,  // [3:3] is the sub-list for extension type_name
-	3,  // [3:3] is the sub-list for extension extendee
-	0,  // [0:3] is the sub-list for field type_name
+	13, // 3: lvmmonitor.GetContainerFsStatsResponse.stats:type_name -> lvmmonitor.FsStatsProto
+	0,  // 4: lvmmonitor.LVMMonitorService.GetThinPoolMetrics:input_type -> lvmmonitor.GetThinPoolMetricsRequest
+	2,  // 5: lvmmonitor.LVMMonitorService.GetThinPoolStats:input_type -> lvmmonitor.GetThinPoolStatsRequest
+	4,  // 6: lvmmonitor.LVMMonitorService.GetVolumeGroupInfo:input_type -> lvmmonitor.GetVolumeGroupInfoRequest
+	11, // 7: lvmmonitor.LVMMonitorService.GetContainerFsStats:input_type -> lvmmonitor.GetContainerFsStatsRequest
+	6,  // 8: lvmmonitor.LVMMonitorService.HealthCheck:input_type -> lvmmonitor.HealthCheckRequest
+	1,  // 9: lvmmonitor.LVMMonitorService.GetThinPoolMetrics:output_type -> lvmmonitor.GetThinPoolMetricsResponse
+	3,  // 10: lvmmonitor.LVMMonitorService.GetThinPoolStats:output_type -> lvmmonitor.GetThinPoolStatsResponse
+	5,  // 11: lvmmonitor.LVMMonitorService.GetVolumeGroupInfo:output_type -> lvmmonitor.GetVolumeGroupInfoResponse
+	12, // 12: lvmmonitor.LVMMonitorService.GetContainerFsStats:output_type -> lvmmonitor.GetContainerFsStatsResponse
+	7,  // 13: lvmmonitor.LVMMonitorService.HealthCheck:output_type -> lvmmonitor.HealthCheckResponse
+	9,  // [9:14] is the sub-list for method output_type
+	4,  // [4:9] is the sub-list for method input_type
+	4,  // [4:4] is the sub-list for extension type_name
+	4,  // [4:4] is the sub-list for extension extendee
+	0,  // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_lvm_monitor_proto_init() }
@@ -1127,7 +1329,7 @@ func file_lvm_monitor_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_lvm_monitor_proto_rawDesc), len(file_lvm_monitor_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
