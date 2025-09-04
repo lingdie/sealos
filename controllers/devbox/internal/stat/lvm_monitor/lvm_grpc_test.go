@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/labring/sealos/controllers/devbox/internal/stat"
 	lvmmonitorclient "github.com/labring/sealos/controllers/devbox/internal/stat/lvm_monitor/lvm_monitor_client"
 	lvmmonitorserver "github.com/labring/sealos/controllers/devbox/internal/stat/lvm_monitor/lvm_monitor_server"
 	"github.com/labring/sealos/controllers/pkg/utils/logger"
@@ -93,6 +94,15 @@ func TestGRPCServerAvailability(t *testing.T) {
 		logger.Info("GetThinPoolMetrics by name passed, got %d metrics", len(metrics))
 	})
 
+	// test get container filesystem stats
+	t.Run("GetContainerFsStats", func(t *testing.T) {
+		stats, err := client.GetContainerFsStats(context.Background())
+		if err != nil {
+			t.Errorf("GetContainerFsStats failed: %v", err)
+		}
+		logger.Info("GetContainerFsStats passed, got %d stats", stats)
+	})
+
 	// stop server
 	cancel()
 	wg.Wait()
@@ -167,5 +177,37 @@ func TestGRPCClientInSidecar(t *testing.T) {
 		logger.Info("GetThinPoolMetrics by name passed, got %d metrics", len(metrics))
 	})
 
+	// test get container filesystem stats
+	t.Run("GetContainerFsStats", func(t *testing.T) {
+		stats, err := client.GetContainerFsStats(context.Background())
+		if err != nil {
+			t.Errorf("GetContainerFsStats failed: %v", err)
+		}
+		logger.Info("Thin pool logical filesystem stats:")
+		logger.Info("  Capacity: %d MB (%d bytes)", *stats.CapacityBytes/1024/1024, *stats.CapacityBytes)
+		logger.Info("  Used: %d MB (%d bytes)", *stats.UsedBytes/1024/1024, *stats.UsedBytes)
+		logger.Info("  Available: %d MB (%d bytes)", *stats.AvailableBytes/1024/1024, *stats.AvailableBytes)
+		logger.Info("  Usage: %.2f%%", float64(*stats.UsedBytes)/float64(*stats.CapacityBytes)*100)
+		logger.Info("  Inodes: %d", *stats.Inodes)
+		logger.Info("  Inodes Free: %d", *stats.InodesFree)
+		logger.Info("  Inodes Used: %d", *stats.InodesUsed)
+	})
+
 	logger.Info("gRPC server test completed successfully")
+}
+
+func TestContainerFSStats(t *testing.T) {
+	nodeImpl := &stat.NodeStatsProviderImpl{}
+	stats, err := nodeImpl.ContainerFsStats(context.Background())
+	if err != nil {
+		t.Fatalf("Failed to get container filesystem stats: %v", err)
+	}
+	logger.Info("Thin pool logical filesystem stats:")
+	logger.Info("  Capacity: %d MB (%d bytes)", *stats.CapacityBytes/1024/1024, *stats.CapacityBytes)
+	logger.Info("  Used: %d MB (%d bytes)", *stats.UsedBytes/1024/1024, *stats.UsedBytes)
+	logger.Info("  Available: %d MB (%d bytes)", *stats.AvailableBytes/1024/1024, *stats.AvailableBytes)
+	logger.Info("  Usage: %.2f%%", float64(*stats.UsedBytes)/float64(*stats.CapacityBytes)*100)
+	logger.Info("  Inodes: %d", *stats.Inodes)
+	logger.Info("  Inodes Free: %d", *stats.InodesFree)
+	logger.Info("  Inodes Used: %d", *stats.InodesUsed)
 }

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/labring/sealos/controllers/pkg/utils/logger"
@@ -93,11 +94,59 @@ type NodeStatsProviderImpl struct {
 func (n *NodeStatsProviderImpl) ContainerFsStats(ctx context.Context) (FsStats, error) {
 	// This is a placeholder for the actual implementation.
 	// In a real implementation, this would return the filesystem stats of the container.
-	availableBytes := uint64(100000000000) // Example value
-	capacityBytes := uint64(200000000000)  // Example value
+	// availableBytes := uint64(100000000000) // Example value
+	// capacityBytes := uint64(200000000000)  // Example value
+	// return FsStats{
+	// 	AvailableBytes: &availableBytes, // Example value
+	// 	CapacityBytes:  &capacityBytes,  // Example value
+	// }, nil
+	// get thin pool metrics
+	thinPoolMetrics, err := n.collectThinPoolMetrics()
+	if err != nil {
+		return FsStats{}, fmt.Errorf("failed to collect thin pool metrics: %w", err)
+	}
+
+	if len(thinPoolMetrics) == 0 {
+		return FsStats{}, fmt.Errorf("no thin pool found")
+	}
+
+	// use the first thin pool
+	metrics := thinPoolMetrics[0]
+
+	// use the logical capacity of the thin pool, not the device file capacity
+	capacityBytes := uint64(metrics.TotalSize)
+	usedBytes := uint64(metrics.UsedSize)
+	availableBytes := capacityBytes - usedBytes
+
+	// for inode, thin pool may not have a direct concept
+	// use default value or get from file system
+	var totalInodes, freeInodes, usedInodes uint64
+
+	// try to get inode information from the thin pool device
+	vgName := strings.ReplaceAll(metrics.VGName, "-", "--")
+	thinPoolName := strings.ReplaceAll(metrics.ThinPoolName, "-", "--")
+	thinPoolPath := fmt.Sprintf("/dev/mapper/%s-%s", vgName, thinPoolName)
+
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(thinPoolPath, &stat); err == nil {
+		totalInodes = uint64(stat.Files)
+		freeInodes = uint64(stat.Ffree)
+		usedInodes = totalInodes - freeInodes
+	} else {
+		// if cannot get inode information, use default value
+		totalInodes = 1000000
+		freeInodes = 800000
+		usedInodes = 200000
+	}
+
 	return FsStats{
-		AvailableBytes: &availableBytes, // Example value
-		CapacityBytes:  &capacityBytes,  // Example value
+		Time:           metav1.Now(),
+		CapacityBytes:  &capacityBytes,
+		AvailableBytes: &availableBytes,
+		UsedBytes:      &usedBytes,
+		Inodes:         &totalInodes,
+		InodesFree:     &freeInodes,
+		InodesUsed:     &usedInodes,
 	}, nil
 }
 

@@ -67,6 +67,24 @@ func (s *LVMMonitorGRPCServer) GetVolumeGroupInfo(ctx context.Context, req *pb.G
 	return nil, nil
 }
 
+// GetContainerFsStats returns the container filesystem stats
+func (s *LVMMonitorGRPCServer) GetContainerFsStats(ctx context.Context, req *pb.GetContainerFsStatsRequest) (*pb.GetContainerFsStatsResponse, error) {
+	stats, err := s.lvmMonitor.ContainerFsStats(ctx)
+	if err != nil {
+		logger.Error("[GetContainerFsStats] failed to get container fs stats", "error", err)
+		return &pb.GetContainerFsStatsResponse{
+			Error: err.Error(),
+		}, nil
+	}
+
+	// convert FsStats to protobuf
+	protoStats := convertFsStatsToProto(&stats)
+
+	return &pb.GetContainerFsStatsResponse{
+		Stats: protoStats,
+	}, nil
+}
+
 // HealthCheck checks the health status of the LVM Monitor
 func (s *LVMMonitorGRPCServer) HealthCheck(ctx context.Context, req *pb.HealthCheckRequest) (*pb.HealthCheckResponse, error) {
 	_, err := s.lvmMonitor.ThinPoolMetrics()
@@ -206,4 +224,32 @@ func (s *HealthServer) Watch(req *grpc_health_v1.HealthCheckRequest, stream grpc
 			}
 		}
 	}
+}
+
+// convertFsStatsToProto converts FsStats to FsStatsProto
+func convertFsStatsToProto(stats *stat.FsStats) *pb.FsStatsProto {
+	proto := &pb.FsStatsProto{
+		Timestamp: stats.Time.Unix(),
+	}
+
+	if stats.AvailableBytes != nil {
+		proto.AvailableBytes = *stats.AvailableBytes
+	}
+	if stats.CapacityBytes != nil {
+		proto.CapacityBytes = *stats.CapacityBytes
+	}
+	if stats.UsedBytes != nil {
+		proto.UsedBytes = *stats.UsedBytes
+	}
+	if stats.InodesFree != nil {
+		proto.InodesFree = *stats.InodesFree
+	}
+	if stats.Inodes != nil {
+		proto.Inodes = *stats.Inodes
+	}
+	if stats.InodesUsed != nil {
+		proto.InodesUsed = *stats.InodesUsed
+	}
+
+	return proto
 }

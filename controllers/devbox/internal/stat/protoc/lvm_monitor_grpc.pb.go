@@ -19,10 +19,11 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	LVMMonitorService_GetThinPoolMetrics_FullMethodName = "/lvmmonitor.LVMMonitorService/GetThinPoolMetrics"
-	LVMMonitorService_GetThinPoolStats_FullMethodName   = "/lvmmonitor.LVMMonitorService/GetThinPoolStats"
-	LVMMonitorService_GetVolumeGroupInfo_FullMethodName = "/lvmmonitor.LVMMonitorService/GetVolumeGroupInfo"
-	LVMMonitorService_HealthCheck_FullMethodName        = "/lvmmonitor.LVMMonitorService/HealthCheck"
+	LVMMonitorService_GetThinPoolMetrics_FullMethodName  = "/lvmmonitor.LVMMonitorService/GetThinPoolMetrics"
+	LVMMonitorService_GetThinPoolStats_FullMethodName    = "/lvmmonitor.LVMMonitorService/GetThinPoolStats"
+	LVMMonitorService_GetVolumeGroupInfo_FullMethodName  = "/lvmmonitor.LVMMonitorService/GetVolumeGroupInfo"
+	LVMMonitorService_GetContainerFsStats_FullMethodName = "/lvmmonitor.LVMMonitorService/GetContainerFsStats"
+	LVMMonitorService_HealthCheck_FullMethodName         = "/lvmmonitor.LVMMonitorService/HealthCheck"
 )
 
 // LVMMonitorServiceClient is the client API for LVMMonitorService service.
@@ -35,6 +36,8 @@ type LVMMonitorServiceClient interface {
 	GetThinPoolStats(ctx context.Context, in *GetThinPoolStatsRequest, opts ...grpc.CallOption) (*GetThinPoolStatsResponse, error)
 	// get VG info
 	GetVolumeGroupInfo(ctx context.Context, in *GetVolumeGroupInfoRequest, opts ...grpc.CallOption) (*GetVolumeGroupInfoResponse, error)
+	// get container filesystem stats
+	GetContainerFsStats(ctx context.Context, in *GetContainerFsStatsRequest, opts ...grpc.CallOption) (*GetContainerFsStatsResponse, error)
 	// healthy check
 	HealthCheck(ctx context.Context, in *HealthCheckRequest, opts ...grpc.CallOption) (*HealthCheckResponse, error)
 }
@@ -77,6 +80,16 @@ func (c *lVMMonitorServiceClient) GetVolumeGroupInfo(ctx context.Context, in *Ge
 	return out, nil
 }
 
+func (c *lVMMonitorServiceClient) GetContainerFsStats(ctx context.Context, in *GetContainerFsStatsRequest, opts ...grpc.CallOption) (*GetContainerFsStatsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetContainerFsStatsResponse)
+	err := c.cc.Invoke(ctx, LVMMonitorService_GetContainerFsStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *lVMMonitorServiceClient) HealthCheck(ctx context.Context, in *HealthCheckRequest, opts ...grpc.CallOption) (*HealthCheckResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(HealthCheckResponse)
@@ -97,6 +110,8 @@ type LVMMonitorServiceServer interface {
 	GetThinPoolStats(context.Context, *GetThinPoolStatsRequest) (*GetThinPoolStatsResponse, error)
 	// get VG info
 	GetVolumeGroupInfo(context.Context, *GetVolumeGroupInfoRequest) (*GetVolumeGroupInfoResponse, error)
+	// get container filesystem stats
+	GetContainerFsStats(context.Context, *GetContainerFsStatsRequest) (*GetContainerFsStatsResponse, error)
 	// healthy check
 	HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error)
 	mustEmbedUnimplementedLVMMonitorServiceServer()
@@ -117,6 +132,9 @@ func (UnimplementedLVMMonitorServiceServer) GetThinPoolStats(context.Context, *G
 }
 func (UnimplementedLVMMonitorServiceServer) GetVolumeGroupInfo(context.Context, *GetVolumeGroupInfoRequest) (*GetVolumeGroupInfoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetVolumeGroupInfo not implemented")
+}
+func (UnimplementedLVMMonitorServiceServer) GetContainerFsStats(context.Context, *GetContainerFsStatsRequest) (*GetContainerFsStatsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetContainerFsStats not implemented")
 }
 func (UnimplementedLVMMonitorServiceServer) HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method HealthCheck not implemented")
@@ -196,6 +214,24 @@ func _LVMMonitorService_GetVolumeGroupInfo_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LVMMonitorService_GetContainerFsStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetContainerFsStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LVMMonitorServiceServer).GetContainerFsStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LVMMonitorService_GetContainerFsStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LVMMonitorServiceServer).GetContainerFsStats(ctx, req.(*GetContainerFsStatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _LVMMonitorService_HealthCheck_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(HealthCheckRequest)
 	if err := dec(in); err != nil {
@@ -232,6 +268,10 @@ var LVMMonitorService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetVolumeGroupInfo",
 			Handler:    _LVMMonitorService_GetVolumeGroupInfo_Handler,
+		},
+		{
+			MethodName: "GetContainerFsStats",
+			Handler:    _LVMMonitorService_GetContainerFsStats_Handler,
 		},
 		{
 			MethodName: "HealthCheck",
