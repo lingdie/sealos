@@ -17,7 +17,6 @@ limitations under the License.
 package main
 
 import (
-	"context"
 	"crypto/tls"
 	"flag"
 	"os"
@@ -27,11 +26,9 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/ptr"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -48,13 +45,7 @@ import (
 
 	devboxv1alpha1 "github.com/labring/sealos/controllers/devbox/api/v1alpha1"
 	devboxv1alpha2 "github.com/labring/sealos/controllers/devbox/api/v1alpha2"
-	"github.com/labring/sealos/controllers/devbox/internal/commit"
-	"github.com/labring/sealos/controllers/devbox/internal/controller"
-	"github.com/labring/sealos/controllers/devbox/internal/controller/utils/matcher"
-	"github.com/labring/sealos/controllers/devbox/internal/controller/utils/nodes"
-	"github.com/labring/sealos/controllers/devbox/internal/controller/utils/registry"
-	utilresource "github.com/labring/sealos/controllers/devbox/internal/controller/utils/resource"
-	"github.com/labring/sealos/controllers/devbox/internal/stat"
+	webhookv1alpha1 "github.com/labring/sealos/controllers/devbox/internal/webhook/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -102,6 +93,7 @@ func main() {
 	// devbox node label
 	var devboxNodeLabel string
 	var acceptanceThreshold int
+	// only webhook mode
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -233,102 +225,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	podMatchers := []matcher.PodMatcher{}
-	if enablePodResourceMatcher {
-		podMatchers = append(podMatchers, matcher.ResourceMatcher{})
-	}
-	if enablePodEnvMatcher {
-		podMatchers = append(podMatchers, matcher.EnvVarMatcher{})
-	}
-	if enablePodPortMatcher {
-		podMatchers = append(podMatchers, matcher.PortMatcher{})
-	}
-	if enablePodEphemeralStorageMatcher {
-		podMatchers = append(podMatchers, matcher.EphemeralStorageMatcher{})
-	}
-	if enablePodStorageLimitMatcher {
-		podMatchers = append(podMatchers, matcher.StorageLimitMatcher{})
-	}
-
-	stateChangeBroadcaster := record.NewBroadcaster()
-
-	if err = (&controller.DevboxReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("devbox-controller"),
-		StateChangeRecorder: stateChangeBroadcaster.NewRecorder(
-			mgr.GetScheme(),
-			corev1.EventSource{Component: "devbox-controller", Host: nodes.GetNodeName()}),
-		CommitImageRegistry: registryAddr,
-		RequestRate: utilresource.RequestRate{
-			CPU:    requestCPURate,
-			Memory: requestMemoryRate,
-		},
-		EphemeralStorage: utilresource.EphemeralStorage{
-			DefaultRequest: resource.MustParse(requestEphemeralStorage),
-			DefaultLimit:   resource.MustParse(limitEphemeralStorage),
-			MaximumLimit:   resource.MustParse(maximumLimitEphemeralStorage),
-		},
-		PodMatchers:              podMatchers,
-		DebugMode:                debugMode,
-		RestartPredicateDuration: restartPredicateDuration,
-		NodeName:                 nodes.GetNodeName(),
-		AcceptanceThreshold:      acceptanceThreshold,
-		NodeStatsProvider:        &stat.NodeStatsProviderImpl{},
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Devbox")
+	// nolint:goconst
+	setupLog.Info("enabled webhook for Devbox conversion")
+	if err := webhookv1alpha1.SetupDevboxWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "Devbox")
 		os.Exit(1)
 	}
 
-	committer, err := commit.NewCommitter(registryAddr, registryUser, registryPassword)
-	if err != nil {
-		setupLog.Error(err, "unable to create committer")
-		os.Exit(1)
-	}
-
-	if err := committer.InitializeGC(context.Background()); err != nil {
-		setupLog.Error(err, "unable to initialize GC")
-		os.Exit(1)
-	}
-
-	stateChangeHandler := controller.StateChangeHandler{
-		Client:              mgr.GetClient(),
-		Scheme:              mgr.GetScheme(),
-		Recorder:            mgr.GetEventRecorderFor("state-change-handler"),
-		Committer:           committer,
-		CommitImageRegistry: registryAddr,
-		NodeName:            nodes.GetNodeName(),
-		Logger:              ctrl.Log.WithName("state-change-handler"),
-	}
-
-	setupLog.Info("StateChangeHandler initialized", "nodeName", nodes.GetNodeName())
-
-	watcher := stateChangeBroadcaster.StartEventWatcher(func(event *corev1.Event) {
-		setupLog.Info("Event received by watcher",
-			"event", event.Name,
-			"eventSourceHost", event.Source.Host,
-			"eventType", event.Type,
-			"eventReason", event.Reason)
-		stateChangeHandler.Handle(context.Background(), event)
-	})
-	defer watcher.Stop()
-
-	if err = (&controller.DevboxreleaseReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-		Registry: registry.Registry{
-			Host: registryAddr,
-			BasicAuth: registry.BasicAuth{
-				Username: registryUser,
-				Password: registryPassword,
-			},
-		},
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Devboxrelease")
-		os.Exit(1)
-	}
 	// +kubebuilder:scaffold:builder
-
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")
 		os.Exit(1)

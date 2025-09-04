@@ -42,51 +42,26 @@ spec:
       labels:
         control-plane: controller-manager
     spec:
-      # TODO(user): Uncomment the following code to configure the nodeAffinity expression
-      # according to the platforms which are supported by your solution.
-      # It is considered best practice to support multiple architectures. You can
-      # build your manager image using the makefile target docker-buildx.
-      # affinity:
-      #   nodeAffinity:
-      #     requiredDuringSchedulingIgnoredDuringExecution:
-      #       nodeSelectorTerms:
-      #         - matchExpressions:
-      #           - key: kubernetes.io/arch
-      #             operator: In
-      #             values:
-      #               - amd64
-      #               - arm64
-      #               - ppc64le
-      #               - s390x
-      #           - key: kubernetes.io/os
-      #             operator: In
-      #             values:
-      #               - linux
       securityContext:
-        runAsNonRoot: true
-        # TODO(user): For common cases that do not require escalating privileges
-        # it is recommended to ensure that all your Pods/Containers are restrictive.
-        # More info: https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted
-        # Please uncomment the following code if your project does NOT have to work on old Kubernetes
-        # versions < 1.19 or on vendors versions which do NOT support this field by default (i.e. Openshift < 4.11 ).
-        # seccompProfile:
-        #   type: RuntimeDefault
+        runAsUser: 0
       containers:
       - command:
         - /manager
         args:
           - --leader-elect
           - --health-probe-bind-address=:8081
-          - --registry-addr={{ .registryAddr }}
-          - --registry-user={{ .registryUser }}
-          - --registry-password={{ .registryPassword }}
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.nodeName
         image: controller:latest
         name: manager
+        ports: []
         securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-            - "ALL"
+          privileged: true
+          runAsUser: 0
         livenessProbe:
           httpGet:
             path: /healthz
@@ -99,8 +74,6 @@ spec:
             port: 8081
           initialDelaySeconds: 5
           periodSeconds: 10
-        # TODO(user): Configure the resources accordingly based on the project requirements.
-        # More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
         resources:
           limits:
             cpu: 1500m
@@ -108,5 +81,40 @@ spec:
           requests:
             cpu: 100m
             memory: 640Mi
+        volumeMounts:
+        - mountPath: /run/containerd
+          name: containerd-run-dir
+        - mountPath: /var/run/containerd
+          name: containerd-var-run-dir
+        - mountPath: /var/lib/containerd
+          mountPropagation: Bidirectional
+          name: containerd-dir
+        - mountPath: /etc/containerd/certs.d
+          name: hosts-dir
+        - mountPath: /tmp
+          name: tmp-dir
+      nodeSelector:
+        devbox.sealos.io/node: ""
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10
+      volumes:
+      - hostPath:
+          path: /run/containerd
+          type: Directory
+        name: containerd-run-dir
+      - hostPath:
+          path: /var/run/containerd
+          type: Directory
+        name: containerd-var-run-dir
+      - hostPath:
+          path: /var/lib/containerd
+          type: Directory
+        name: containerd-dir
+      - hostPath:
+          path: /etc/containerd/certs.d
+          type: Directory
+        name: hosts-dir
+      - hostPath:
+          path: /tmp
+          type: Directory
+        name: tmp-dir

@@ -43,6 +43,11 @@ resources:
   kind: Devbox
   path: github.com/labring/sealos/controllers/devbox/api/v1alpha1
   version: v1alpha1
+  webhooks:
+    conversion: true
+    spoke:
+    - v1alpha2
+    webhookVersion: v1
 - api:
     crdVersion: v1
     namespaced: true
