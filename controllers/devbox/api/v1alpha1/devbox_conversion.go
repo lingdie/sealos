@@ -18,7 +18,9 @@ package v1alpha1
 
 import (
 	"log"
+	"sort"
 
+	"github.com/google/uuid"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/conversion"
@@ -38,7 +40,6 @@ func (src *Devbox) ConvertTo(dstRaw conversion.Hub) error {
 	transformDevboxV1alpha1ToV1alpha2(src, dst)
 	return nil
 }
-
 
 // ConvertFrom converts the Hub version (v1alpha2) to this Devbox (v1alpha1).
 func (dst *Devbox) ConvertFrom(srcRaw conversion.Hub) error {
@@ -95,6 +96,7 @@ func transformDevboxV1alpha1ToV1alpha2(src *Devbox, dst *devboxv1alpha2.Devbox) 
 	}
 
 	// Transform Status
+	commitRecords, contentID := transformCommitHistories(src.Status.CommitHistory, src.Spec.Image)
 	dst.Status = devboxv1alpha2.DevboxStatus{
 		Network: devboxv1alpha2.NetworkStatus{
 			Type:     devboxv1alpha2.NetworkType(src.Status.Network.Type),
@@ -103,37 +105,65 @@ func transformDevboxV1alpha1ToV1alpha2(src *Devbox, dst *devboxv1alpha2.Devbox) 
 		},
 		Phase:         devboxv1alpha2.DevboxPhase(src.Status.Phase),
 		State:         devboxv1alpha2.DevboxState(src.Spec.State),
-		CommitRecords: transformCommitHistories(src.Status.CommitHistory),
-		// Note: v1alpha2 has additional fields ContentID, Node, LastContainerStatus
-		// We'll leave them empty as v1alpha1 doesn't have equivalent fields
-        // wait for devbox controller to update the status
-        // ContentID: "",
-        // Node: "",
-        // LastContainerStatus: corev1.ContainerStatus{},
+		CommitRecords: commitRecords,
+		ContentID:     contentID,
+		// Note: Node and LastContainerStatus will be set by controller
+		Node:                "",
+		LastContainerStatus: corev1.ContainerStatus{},
 	}
 }
 
-func transformCommitHistories(commitHistories []*CommitHistory) devboxv1alpha2.CommitRecordMap {
+func transformCommitHistories(commitHistories []*CommitHistory, initialImage string) (devboxv1alpha2.CommitRecordMap, string) {
 	commitRecordMap := devboxv1alpha2.CommitRecordMap{}
-	for _, commitHistory := range commitHistories {
+
+	if len(commitHistories) == 0 {
+		// No commit history, create a new contentID for future use
+		contentID := uuid.New().String()
+		return commitRecordMap, contentID
+	}
+
+	// Sort commit histories by time to establish proper order
+	sortedCommits := make([]*CommitHistory, len(commitHistories))
+	copy(sortedCommits, commitHistories)
+	sort.Slice(sortedCommits, func(i, j int) bool {
+		return sortedCommits[i].Time.Before(&sortedCommits[j].Time)
+	})
+
+	// Build the commit chain with proper baseImage relationships
+	var previousImage = initialImage
+	for _, commitHistory := range sortedCommits {
 		if commitHistory.ContainerID == "" {
 			continue
 		}
-		commitRecordMap[commitHistory.ContainerID] = transformCommitHistory(commitHistory)
-	}
-	return commitRecordMap
-}
 
-func transformCommitHistory(commitHistory *CommitHistory) *devboxv1alpha2.CommitRecord {
-	return &devboxv1alpha2.CommitRecord{
-		BaseImage:    "",
-		CommitImage:  commitHistory.Image,
-		Node:         commitHistory.Node,
-		GenerateTime: commitHistory.Time,
-		ScheduleTime: commitHistory.Time,
-		CommitTime:   commitHistory.Time,
-		CommitStatus: devboxv1alpha2.CommitStatus(commitHistory.Status),
+		commitRecord := &devboxv1alpha2.CommitRecord{
+			BaseImage:    previousImage,
+			CommitImage:  commitHistory.Image,
+			Node:         commitHistory.Node,
+			GenerateTime: commitHistory.Time,
+			ScheduleTime: commitHistory.Time,
+			UpdateTime:   commitHistory.Time,
+			CommitTime:   commitHistory.Time,
+			CommitStatus: devboxv1alpha2.CommitStatus(commitHistory.Status),
+		}
+
+		commitRecordMap[commitHistory.ContainerID] = commitRecord
+		previousImage = commitHistory.Image
 	}
+
+	// Create an additional record for the contentID (latest state)
+	contentID := uuid.New().String()
+	lastCommit := sortedCommits[len(sortedCommits)-1]
+
+	// Add a new record that represents the current state
+	commitRecordMap[contentID] = &devboxv1alpha2.CommitRecord{
+		BaseImage:    lastCommit.Image,
+		CommitImage:  lastCommit.Image + "-v1alpha2", // This will be filled by the controller when a new commit happens
+		Node:         "",
+		GenerateTime: metav1.Now(),
+		CommitStatus: devboxv1alpha2.CommitStatusPending,
+	}
+	return commitRecordMap, contentID
 }
 
 func transformDevboxV1alpha2ToV1alpha1(src *devboxv1alpha2.Devbox, dst *Devbox) {

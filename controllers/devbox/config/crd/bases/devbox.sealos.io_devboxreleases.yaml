@@ -8,26 +8,29 @@ metadata:
 spec:
   group: devbox.sealos.io
   names:
-    kind: DevboxRelease
-    listKind: DevboxReleaseList
+    kind: DevBoxRelease
+    listKind: DevBoxReleaseList
     plural: devboxreleases
     singular: devboxrelease
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
+    - jsonPath: .spec.devboxName
+      name: DevboxName
+      type: string
+    - jsonPath: .spec.newTag
+      name: NewTag
+      type: string
     - jsonPath: .status.phase
       name: Phase
       type: string
-    - jsonPath: .status.sourceImage
-      name: SourceImage
+    - jsonPath: .status.originalImage
+      name: OriginalImage
       type: string
-    - jsonPath: .status.targetImage
-      name: TargetImage
-      type: string
-    name: v1alpha2
+    name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: DevboxRelease is the Schema for the devboxreleases API.
+        description: DevBoxRelease is the Schema for the devboxreleases API
         properties:
           apiVersion:
             description: |-
@@ -47,7 +50,69 @@ spec:
           metadata:
             type: object
           spec:
-            description: DevboxReleaseSpec defines the desired state of Devboxrelease.
+            description: DevBoxReleaseSpec defines the desired state of DevBoxRelease
+            properties:
+              devboxName:
+                type: string
+              newTag:
+                type: string
+              notes:
+                type: string
+            required:
+            - devboxName
+            - newTag
+            type: object
+          status:
+            description: DevBoxReleaseStatus defines the observed state of DevBoxRelease
+            properties:
+              originalImage:
+                type: string
+              phase:
+                default: Pending
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: false
+    subresources:
+      status: {}
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .spec.version
+      name: Version
+      type: string
+    - jsonPath: .status.sourceImage
+      name: SourceImage
+      type: string
+    - jsonPath: .status.targetImage
+      name: TargetImage
+      type: string
+    name: v1alpha2
+    schema:
+      openAPIV3Schema:
+        description: DevBoxRelease is the Schema for the devboxreleases API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: DevBoxReleaseSpec defines the desired state of Devboxrelease.
             properties:
               devboxName:
                 type: string

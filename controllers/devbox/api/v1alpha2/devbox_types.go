@@ -265,6 +265,7 @@ type DevboxStatus struct {
 }
 
 // +kubebuilder:object:root=true
+// +kubebuilder:storageversion
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="State",type="string",JSONPath=".spec.state"
 // +kubebuilder:printcolumn:name="NetworkType",type="string",JSONPath=".status.network.type"

@@ -31,3 +31,8 @@ func SetupDevboxWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).For(&devboxv1alpha1.Devbox{}).
 		Complete()
 }
+
+func SetupDevBoxReleaseWebhookWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewWebhookManagedBy(mgr).For(&devboxv1alpha1.DevBoxRelease{}).
+		Complete()
+}

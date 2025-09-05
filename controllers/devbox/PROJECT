@@ -32,9 +32,14 @@ resources:
   controller: true
   domain: sealos.io
   group: devbox
-  kind: DevboxRelease
+  kind: DevBoxRelease
   path: github.com/labring/sealos/controllers/devbox/api/v1alpha2
   version: v1alpha2
+  webhooks:
+    conversion: true
+    spoke:
+    - v1alpha1
+    webhookVersion: v1
 - api:
     crdVersion: v1
     namespaced: true
@@ -53,7 +58,7 @@ resources:
     namespaced: true
   domain: sealos.io
   group: devbox
-  kind: DevboxRelease
+  kind: DevBoxRelease
   path: github.com/labring/sealos/controllers/devbox/api/v1alpha1
   version: v1alpha1
 version: "3"

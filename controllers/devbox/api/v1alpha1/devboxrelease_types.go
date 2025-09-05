@@ -30,22 +30,22 @@ type DevBoxReleaseSpec struct {
 	Notes string `json:"notes,omitempty"`
 }
 
-type DevboxReleasePhase string
+type DevBoxReleasePhase string
 
 const (
-	// DevboxReleasePhaseSuccess means the Devbox has been tagged
-	DevboxReleasePhaseSuccess DevboxReleasePhase = "Success"
-	// DevboxReleasePhasePending means the Devbox has not been tagged
-	DevboxReleasePhasePending DevboxReleasePhase = "Pending"
-	// DevboxReleasePhaseFailed means the Devbox has not been tagged
-	DevboxReleasePhaseFailed DevboxReleasePhase = "Failed"
+	// DevBoxReleasePhaseSuccess means the Devbox has been tagged
+	DevBoxReleasePhaseSuccess DevBoxReleasePhase = "Success"
+	// DevBoxReleasePhasePending means the Devbox has not been tagged
+	DevBoxReleasePhasePending DevBoxReleasePhase = "Pending"
+	// DevBoxReleasePhaseFailed means the Devbox has not been tagged
+	DevBoxReleasePhaseFailed DevBoxReleasePhase = "Failed"
 )
 
 // DevBoxReleaseStatus defines the observed state of DevBoxRelease
 type DevBoxReleaseStatus struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default=Pending
-	Phase DevboxReleasePhase `json:"phase"`
+	Phase DevBoxReleasePhase `json:"phase"`
 	// +kubebuilder:validation:Optional
 	OriginalImage string `json:"originalImage"`
 }
