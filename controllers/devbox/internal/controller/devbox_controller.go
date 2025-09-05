@@ -26,6 +26,7 @@ import (
 	devboxv1alpha2 "github.com/labring/sealos/controllers/devbox/api/v1alpha2"
 	"github.com/labring/sealos/controllers/devbox/internal/commit"
 	"github.com/labring/sealos/controllers/devbox/internal/controller/helper"
+	"github.com/labring/sealos/controllers/devbox/internal/controller/utils/events"
 	"github.com/labring/sealos/controllers/devbox/internal/controller/utils/matcher"
 	"github.com/labring/sealos/controllers/devbox/internal/controller/utils/resource"
 	"github.com/labring/sealos/controllers/devbox/internal/stat"
@@ -120,6 +121,11 @@ func (r *DevboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	} else {
 		logger.Info("devbox deleted, remove all resources")
 		if err := r.removeAll(ctx, devbox, recLabels); err != nil {
+			return ctrl.Result{}, err
+		}
+
+		// delete lv:
+		if err := r.deleteLV(ctx, devbox); err != nil {
 			return ctrl.Result{}, err
 		}
 
@@ -603,6 +609,47 @@ func (r *DevboxReconciler) handlePodDeleted(ctx context.Context, devbox *devboxv
 			return err
 		}
 	}
+	return nil
+}
+
+func (r *DevboxReconciler) deleteLV(ctx context.Context, devbox *devboxv1alpha2.Devbox) error {
+	logger := log.FromContext(ctx)
+
+	// check status
+	if devbox.Spec.State == devboxv1alpha2.DevboxStateShutdown || devbox.Spec.State == devboxv1alpha2.DevboxStateStopped {
+		logger.Info("devbox's spec state is stopped or shutdown, LV already cleaned up", "devbox", devbox.Name, "devboxSpecState", devbox.Spec.State)
+		return nil
+	}
+
+	if devbox.Status.CommitRecords[devbox.Status.ContentID].Node != r.NodeName {
+		logger.Info("devbox's commit record node is not the same as the node name, skipping LV cleanup", "devbox", devbox.Name, "commitRecordNode", devbox.Status.CommitRecords[devbox.Status.ContentID].Node, "nodeName", r.NodeName)
+		return nil
+	}
+
+	contentID := devbox.Status.ContentID
+	if contentID == "" {
+		logger.Error(fmt.Errorf("contentID is empty"), "devbox", devbox.Name, "devboxSpecState", devbox.Spec.State)
+		return fmt.Errorf("contentID is empty")
+	}
+
+	if devbox.Status.CommitRecords == nil || devbox.Status.CommitRecords[contentID] == nil {
+		logger.Error(fmt.Errorf("commit record is empty"), "devbox", devbox.Name, "contentID", contentID)
+		return fmt.Errorf("commit record is empty")
+	}
+
+	currentRecord := devbox.Status.CommitRecords[contentID]
+	baseImage := currentRecord.BaseImage
+	if baseImage == "" {
+		logger.Error(fmt.Errorf("baseImage is empty"), "devbox", devbox.Name, "contentID", contentID)
+		return fmt.Errorf("baseImage is empty")
+	}
+
+	logger.Info("Starting devbox deletion LV cleanup", "devbox", devbox.Name, "contentID", devbox.Status.ContentID)
+
+	// use StateChangeRecorder to delete lv
+	eventMessage := fmt.Sprintf(events.EventMessageLVCleanupFormat, devbox.Name, contentID, baseImage)
+	logger.Info("deleting LV", "eventMessage", eventMessage)
+	r.StateChangeRecorder.Eventf(devbox, corev1.EventTypeNormal, events.EventReasonLVCleanupRequested, eventMessage)
 	return nil
 }
 
