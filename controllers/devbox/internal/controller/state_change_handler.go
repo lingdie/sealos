@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -10,7 +11,7 @@ import (
 	"github.com/google/uuid"
 	devboxv1alpha2 "github.com/labring/sealos/controllers/devbox/api/v1alpha2"
 	"github.com/labring/sealos/controllers/devbox/internal/commit"
-
+	"github.com/labring/sealos/controllers/devbox/internal/controller/utils/events"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -48,11 +49,36 @@ func (h *StateChangeHandler) Handle(ctx context.Context, event *corev1.Event) er
 		h.Logger.Info("event source host is not the node name, skip", "event", event)
 		return nil
 	}
+
+	// clean lv if devbox is deleted
+	if event.Reason == events.EventReasonLVCleanupRequested {
+		h.Logger.Info("LV cleanup event detected", "event", event.Name, "message", event.Message)
+		if err := h.deleteDevbox(ctx, event); err != nil {
+			h.Logger.Error(err, "failed to clean up LV during delete devbox", "devbox", event.Name)
+			h.Recorder.Eventf(&corev1.ObjectReference{
+				Kind:      event.InvolvedObject.Kind,
+				Name:      event.InvolvedObject.Name,
+				Namespace: event.InvolvedObject.Namespace,
+			}, corev1.EventTypeWarning, "LV cleanup failed",
+				"Failed to cleanup LV: %v", err)
+		} else {
+			h.Logger.Info("Successfully cleaned up LV during deletion", "devbox", event.Name)
+			h.Recorder.Eventf(&corev1.ObjectReference{
+				Kind:      event.InvolvedObject.Kind,
+				Name:      event.InvolvedObject.Name,
+				Namespace: event.InvolvedObject.Namespace,
+			}, corev1.EventTypeNormal, "LV cleanup succeeded",
+				"Successfully cleaned up LV for devbox %s", event.Name)
+		}
+		return nil
+	}
+
 	devbox := &devboxv1alpha2.Devbox{}
 	if err := h.Client.Get(ctx, types.NamespacedName{Namespace: event.Namespace, Name: event.InvolvedObject.Name}, devbox); err != nil {
 		h.Logger.Error(err, "failed to get devbox", "devbox", event.InvolvedObject.Name)
 		return err
 	}
+
 	// Check if state transition is valid and handle accordingly
 	currentState := devbox.Status.State
 	targetState := devbox.Spec.State
@@ -186,4 +212,92 @@ func (h *StateChangeHandler) commitDevbox(ctx context.Context, devbox *devboxv1a
 func (h *StateChangeHandler) generateImageName(devbox *devboxv1alpha2.Devbox) string {
 	now := time.Now()
 	return fmt.Sprintf("%s/%s/%s:%s-%s", h.CommitImageRegistry, devbox.Namespace, devbox.Name, rand.String(5), now.Format("2006-01-02-150405"))
+}
+
+func (h *StateChangeHandler) deleteDevbox(ctx context.Context, event *corev1.Event) error {
+	h.Logger.Info("Starting devbox deletion LV cleanup", "devbox", event.Name, "message", event.Message)
+	devboxName, contentID, baseImage, err := h.parseLVCleanupMessage(event.Message)
+	if err != nil {
+		h.Logger.Error(err, "failed to parse LV cleanup message", "event", event)
+		return err
+	}
+
+	const maxRetries = 3
+	const retryDelay = 2 * time.Second
+
+	for i := 0; i < maxRetries; i++ {
+		if err := h.cleanupLV(ctx, devboxName, contentID, baseImage); err == nil {
+			h.Logger.Info("Successfully completed LV cleanup", "devbox", devboxName, "attempt", i+1)
+			return nil
+		} else {
+			h.Logger.Error(err, "LV cleanup failed, retrying...", "devbox", devboxName, "attempt", i+1, "maxRetries", maxRetries)
+
+			if i < maxRetries-1 {
+				time.Sleep(retryDelay)
+			}
+		}
+	}
+
+	return fmt.Errorf("failed to cleanup LV after %d attempts", maxRetries)
+}
+
+func (h *StateChangeHandler) cleanupLV(ctx context.Context, devboxName, contentID, baseImage string) error {
+	h.Logger.Info("Starting LV cleanup", "devbox", devboxName, "contentID", contentID, "baseImage", baseImage)
+
+	// create temp container
+	containerID, err := h.Committer.CreateContainer(ctx, fmt.Sprintf("temp-%s-%d", devboxName, time.Now().UnixMicro()), contentID, baseImage)
+	if err != nil {
+		h.Logger.Error(err, "failed to create temp container", "devbox", devboxName, "contentID", contentID, "baseImage", baseImage)
+		return err
+	}
+
+	// make sure remove container
+	defer func() {
+		if cleanupErr := h.Committer.RemoveContainer(ctx, containerID); cleanupErr != nil {
+			h.Logger.Error(cleanupErr, "failed to remove temporary container", "devbox", devboxName, "containerID", containerID)
+		} else {
+			h.Logger.Info("Successfully removed temporary container", "devbox", devboxName, "containerID", containerID)
+		}
+	}()
+
+	// remove lv
+	if err := h.Committer.SetLvRemovable(ctx, containerID, contentID); err != nil {
+		h.Logger.Error(err, "failed to set LV removable", "devbox", devboxName, "containerID", containerID, "contentID", contentID)
+		return fmt.Errorf("failed to set LV removable: %w", err)
+	}
+
+	h.Logger.Info("Successfully completed LV cleanup", "devbox", devboxName, "containerID", containerID, "contentID", contentID)
+
+	return nil
+}
+
+// parseLVCleanupMessage parses the message from the event and returns the devboxName, contentID, and baseImage
+func (h *StateChangeHandler) parseLVCleanupMessage(message string) (devboxName, contentID, baseImage string, err error) {
+	parts := strings.Split(message, ", ")
+	if len(parts) != 3 {
+		return "", "", "", fmt.Errorf("invalid message format: %s", message)
+	}
+
+	// resolve devboxName
+	devboxNamePart := parts[0]
+	if !strings.Contains(devboxNamePart, "devboxName=") {
+		return "", "", "", fmt.Errorf("missing devboxName in message: %s", message)
+	}
+	devboxName = strings.TrimPrefix(devboxNamePart, "devboxName=")
+
+	// contentID
+	contentIDPart := parts[1]
+	if !strings.Contains(contentIDPart, "contentID=") {
+		return "", "", "", fmt.Errorf("missing contentID in message: %s", message)
+	}
+	contentID = strings.TrimPrefix(contentIDPart, "contentID=")
+
+	// baseImage
+	baseImagePart := parts[2]
+	if !strings.Contains(baseImagePart, "baseImage=") {
+		return "", "", "", fmt.Errorf("missing baseImage in message: %s", message)
+	}
+	baseImage = strings.TrimPrefix(baseImagePart, "baseImage=")
+
+	return devboxName, contentID, baseImage, nil
 }
