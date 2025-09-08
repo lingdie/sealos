@@ -67,6 +67,45 @@ test: manifests generate fmt vet envtest ## Run tests.
 build: ## Build manager binary.
 	CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -ldflags "-s -w" -trimpath -o bin/manager cmd/main.go
 
+.PHONY: build-upgrade
+build-upgrade: ## Build upgrade tool binary.
+	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/upgrade cmd/upgrade/main.go
+
+.PHONY: build-upgrade-tools
+build-upgrade-tools: ## Build all upgrade tools.
+	@echo "Building all upgrade tools..."
+	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/devbox-backup cmd/devbox-backup/main.go
+	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/devbox-pause cmd/devbox-pause/main.go
+	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/devbox-transform cmd/devbox-transform/main.go
+	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/devbox-crd cmd/devbox-crd/main.go
+	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/devbox-restore cmd/devbox-restore/main.go
+	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/devbox-status cmd/devbox-status/main.go
+	@echo "All upgrade tools built successfully!"
+
+.PHONY: build-backup
+build-backup: ## Build backup tool binary.
+	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/devbox-backup cmd/devbox-backup/main.go
+
+.PHONY: build-pause
+build-pause: ## Build pause tool binary.
+	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/devbox-pause cmd/devbox-pause/main.go
+
+.PHONY: build-transform
+build-transform: ## Build transform tool binary.
+	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/devbox-transform cmd/devbox-transform/main.go
+
+.PHONY: build-crd
+build-crd: ## Build CRD management tool binary.
+	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/devbox-crd cmd/devbox-crd/main.go
+
+.PHONY: build-restore
+build-restore: ## Build restore tool binary.
+	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/devbox-restore cmd/devbox-restore/main.go
+
+.PHONY: build-status
+build-status: ## Build status tool binary.
+	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/devbox-status cmd/devbox-status/main.go
+
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./cmd/main.go
