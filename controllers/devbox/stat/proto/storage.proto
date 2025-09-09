@@ -1,0 +1,80 @@
+syntax = "proto3";
+
+package storage;
+
+option go_package = "github.com/labring/sealos/controllers/devbox/internal/stat/proto";
+
+service StorageService {
+  rpc GetStorageStats(GetStorageStatsRequest) returns (GetStorageStatsResponse);
+  
+  rpc GetStorageMetadata(GetStorageMetadataRequest) returns (GetStorageMetadataResponse);
+  
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+// get storage data 
+message GetStorageStatsRequest {
+  string node_name = 1;
+}
+
+message GetStorageStatsResponse {
+  StorageStatsProto stats = 1;
+  string error = 2;
+}
+
+// get storage metadata 
+message GetStorageMetadataRequest {
+  string node_name = 1;
+}
+
+message GetStorageMetadataResponse {
+  StorageMetadataProto metadata = 1;
+  string error = 2;
+}
+
+// healthy check
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  bool healthy = 1;
+  string message = 2;
+}
+
+// storage data 
+message StorageStatsProto {
+  int64 timestamp = 1;
+  string node_name = 2;
+  string storage_type = 3;  // "lvm", "ceph", "nfs" 等
+  
+  // base storage data info
+  uint64 capacity_bytes = 4;
+  uint64 available_bytes = 5;
+  uint64 used_bytes = 6;
+  
+  // Inode info
+  uint64 inodes_free = 7;
+  uint64 inodes = 8;
+  uint64 inodes_used = 9;
+  
+  // data percent
+  double data_percent = 10;
+  
+  // option metrics
+  map<string, string> metrics = 11;
+}
+
+// storage metadata 
+message StorageMetadataProto {
+  int64 timestamp = 1;
+  string storage_type = 2;  // "lvm", "ceph", "nfs" 等
+  string node_name = 3;
+  
+  // base storage metadata info
+  uint64 metadata_capacity_bytes = 4;
+  uint64 metadata_available_bytes = 5;
+  uint64 metadata_used_bytes = 6;
+  double metadata_used_percent = 7;
+  
+  // option metrics
+  map<string, string> metrics = 8;
+}
