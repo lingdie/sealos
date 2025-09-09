@@ -24,10 +24,7 @@ import (
 	"path/filepath"
 	"time"
 
-	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -43,7 +40,7 @@ import (
 
 var (
 	scheme   = runtime.NewScheme()
-	setupLog = ctrl.Log.WithName("devbox-pause")
+	setupLog = ctrl.Log.WithName("devbox-stop")
 )
 
 func init() {
@@ -52,28 +49,18 @@ func init() {
 	utilruntime.Must(devboxv1alpha2.AddToScheme(scheme))
 }
 
-type PauseConfig struct {
+type DevboxStopConfig struct {
 	common.BaseConfig
-	Namespace       string
-	PauseController bool
-	ControllerNS    string
-	ControllerName  string
-	CommitTimeout   time.Duration
-	OnlyDevboxes    bool
-	OnlyController  bool
+	Namespace     string
+	CommitTimeout time.Duration
 }
 
 func main() {
-	var config PauseConfig
+	var config DevboxStopConfig
 	flag.BoolVar(&config.DryRun, "dry-run", false, "If true, only print what would be done")
-	flag.StringVar(&config.Namespace, "namespace", "", "Namespace to pause devboxes (empty for all namespaces)")
+	flag.StringVar(&config.Namespace, "namespace", "", "Namespace to stop devboxes (empty for all namespaces)")
 	flag.StringVar(&config.BackupDir, "backup-dir", "./backup", "Directory to store backup files")
-	flag.BoolVar(&config.PauseController, "pause-controller", true, "Whether to pause the controller")
-	flag.StringVar(&config.ControllerNS, "controller-namespace", "devbox-system", "Controller namespace")
-	flag.StringVar(&config.ControllerName, "controller-name", "devbox-controller-manager", "Controller deployment name")
 	flag.DurationVar(&config.CommitTimeout, "commit-timeout", 5*time.Minute, "Timeout for waiting commits to finish")
-	flag.BoolVar(&config.OnlyDevboxes, "only-devboxes", false, "Only pause devboxes, not the controller")
-	flag.BoolVar(&config.OnlyController, "only-controller", false, "Only pause the controller, not devboxes")
 
 	opts := zap.Options{
 		Development: true,
@@ -92,23 +79,22 @@ func main() {
 
 	ctx := context.Background()
 
-	setupLog.Info("Starting devbox pause process",
+	setupLog.Info("Starting devbox stop process",
 		"dry-run", config.DryRun,
 		"namespace", config.Namespace,
 		"backup-dir", config.BackupDir,
-		"pause-controller", config.PauseController,
-		"only-devboxes", config.OnlyDevboxes,
-		"only-controller", config.OnlyController)
+		"commit-timeout", config.CommitTimeout)
 
-	if err := performPause(ctx, k8sClient, config); err != nil {
-		setupLog.Error(err, "pause process failed")
+	if err := stopAllDevboxes(ctx, k8sClient, config); err != nil {
+		setupLog.Error(err, "devbox stop process failed")
 		os.Exit(1)
 	}
 
-	setupLog.Info("Pause process completed successfully")
+	setupLog.Info("Devbox stop process completed successfully")
 }
 
-func performPause(ctx context.Context, k8sClient client.Client, config PauseConfig) error {
+// stopAllDevboxes 停止所有devbox，等待commit结束（记录操作id及原状态）
+func stopAllDevboxes(ctx context.Context, k8sClient client.Client, config DevboxStopConfig) error {
 	// 创建备份目录
 	if !config.DryRun {
 		if err := os.MkdirAll(config.BackupDir, 0755); err != nil {
@@ -116,25 +102,6 @@ func performPause(ctx context.Context, k8sClient client.Client, config PauseConf
 		}
 	}
 
-	// 暂停devboxes
-	if !config.OnlyController {
-		if err := pauseAllDevboxes(ctx, k8sClient, config); err != nil {
-			return fmt.Errorf("failed to pause devboxes: %w", err)
-		}
-	}
-
-	// 暂停controller
-	if config.PauseController && !config.OnlyDevboxes {
-		if err := pauseController(ctx, k8sClient, config); err != nil {
-			return fmt.Errorf("failed to pause controller: %w", err)
-		}
-	}
-
-	return nil
-}
-
-// pauseAllDevboxes 暂停所有devbox，等待commit结束（记录操作id及原状态）
-func pauseAllDevboxes(ctx context.Context, k8sClient client.Client, config PauseConfig) error {
 	devboxList := &devboxv1alpha1.DevboxList{}
 	listOpts := []client.ListOption{}
 	if config.Namespace != "" {
@@ -145,10 +112,10 @@ func pauseAllDevboxes(ctx context.Context, k8sClient client.Client, config Pause
 		return fmt.Errorf("failed to list Devboxes: %w", err)
 	}
 
-	setupLog.Info("Found Devboxes to pause", "count", len(devboxList.Items))
+	setupLog.Info("Found Devboxes to stop", "count", len(devboxList.Items))
 
 	var backupStates []common.DevboxBackupState
-	operationID := fmt.Sprintf("pause-%d", time.Now().Unix())
+	operationID := fmt.Sprintf("stop-%d", time.Now().Unix())
 
 	for i := range devboxList.Items {
 		devbox := &devboxList.Items[i]
@@ -164,14 +131,14 @@ func pauseAllDevboxes(ctx context.Context, k8sClient client.Client, config Pause
 		}
 		backupStates = append(backupStates, backupState)
 
-		setupLog.Info("Processing Devbox for pause",
+		setupLog.Info("Processing Devbox for stop",
 			"name", devbox.Name,
 			"namespace", devbox.Namespace,
 			"current-state", devbox.Spec.State,
 			"current-phase", devbox.Status.Phase)
 
 		if config.DryRun {
-			setupLog.Info("DRY-RUN: Would pause Devbox",
+			setupLog.Info("DRY-RUN: Would stop Devbox",
 				"name", devbox.Name,
 				"namespace", devbox.Namespace)
 			continue
@@ -192,7 +159,7 @@ func pauseAllDevboxes(ctx context.Context, k8sClient client.Client, config Pause
 			return err
 		}
 
-		// 如果devbox正在运行，需要暂停它
+		// 如果devbox正在运行，需要停止它
 		if devbox.Spec.State == devboxv1alpha1.DevboxStateRunning {
 			// 设置为Stopped状态
 			devbox.Spec.State = devboxv1alpha1.DevboxStateStopped
@@ -201,20 +168,20 @@ func pauseAllDevboxes(ctx context.Context, k8sClient client.Client, config Pause
 				if updateErr := upgrade.UpdateUpgradeAnnotation(ctx, k8sClient, devbox, upgrade.AnnotationUpgradeStatus, upgrade.UpgradeStatusFailed); updateErr != nil {
 					setupLog.Error(updateErr, "Failed to update upgrade status annotation")
 				}
-				return fmt.Errorf("failed to pause devbox %s/%s: %w", devbox.Namespace, devbox.Name, err)
+				return fmt.Errorf("failed to stop devbox %s/%s: %w", devbox.Namespace, devbox.Name, err)
 			}
 
-			// 标记暂停完成
+			// 标记停止完成
 			if err := upgrade.UpdateUpgradeAnnotation(ctx, k8sClient, devbox, upgrade.AnnotationUpgradeStatus, upgrade.UpgradeStatusPaused); err != nil {
 				setupLog.Error(err, "Failed to update upgrade status annotation")
 			}
 
-			setupLog.Info("Successfully paused Devbox",
+			setupLog.Info("Successfully stopped Devbox",
 				"name", devbox.Name,
 				"namespace", devbox.Namespace,
 				"operation-id", operationID)
 		} else {
-			// 如果不需要暂停，直接标记为已处理
+			// 如果不需要停止，直接标记为已处理
 			if err := upgrade.UpdateUpgradeAnnotation(ctx, k8sClient, devbox, upgrade.AnnotationUpgradeStatus, upgrade.UpgradeStatusPaused); err != nil {
 				setupLog.Error(err, "Failed to update upgrade status annotation")
 			}
@@ -232,46 +199,6 @@ func pauseAllDevboxes(ctx context.Context, k8sClient client.Client, config Pause
 		}
 		setupLog.Info("Saved devbox backup states", "file", backupStatesFile, "operation-id", operationID)
 	}
-
-	return nil
-}
-
-// pauseController 暂停Controller（直接删除旧的devbox deployment）
-func pauseController(ctx context.Context, k8sClient client.Client, config PauseConfig) error {
-	if config.DryRun {
-		setupLog.Info("DRY-RUN: Would delete controller deployment",
-			"deployment", config.ControllerName,
-			"namespace", config.ControllerNS)
-		return nil
-	}
-
-	deployment := &appsv1.Deployment{}
-	err := k8sClient.Get(ctx, types.NamespacedName{Name: config.ControllerName, Namespace: config.ControllerNS}, deployment)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			setupLog.Info("Controller deployment not found, might be already deleted",
-				"deployment", config.ControllerName,
-				"namespace", config.ControllerNS)
-			return nil
-		}
-		return fmt.Errorf("failed to get controller deployment: %w", err)
-	}
-
-	// 备份deployment配置
-	backupFile := filepath.Join(config.BackupDir, "controller_deployment.yaml")
-	if err := common.SaveToFile(deployment, backupFile); err != nil {
-		return fmt.Errorf("failed to backup controller deployment: %w", err)
-	}
-
-	// 删除deployment
-	if err := k8sClient.Delete(ctx, deployment); err != nil {
-		return fmt.Errorf("failed to delete controller deployment: %w", err)
-	}
-
-	setupLog.Info("Successfully paused controller by deleting deployment",
-		"deployment", config.ControllerName,
-		"namespace", config.ControllerNS,
-		"backup-file", backupFile)
 
 	return nil
 }
