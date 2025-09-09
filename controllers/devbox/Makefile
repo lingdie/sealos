@@ -76,6 +76,7 @@ build-upgrade-tools: ## Build all upgrade tools.
 	@echo "Building all upgrade tools..."
 	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/devbox-backup cmd/devbox-backup/main.go
 	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/devbox-pause cmd/devbox-pause/main.go
+	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/devbox-controller cmd/devbox-controller/main.go
 	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/devbox-transform cmd/devbox-transform/main.go
 	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/devbox-crd cmd/devbox-crd/main.go
 	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/devbox-restore cmd/devbox-restore/main.go
@@ -89,6 +90,10 @@ build-backup: ## Build backup tool binary.
 .PHONY: build-pause
 build-pause: ## Build pause tool binary.
 	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/devbox-pause cmd/devbox-pause/main.go
+
+.PHONY: build-controller
+build-controller: ## Build controller management tool binary.
+	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/devbox-controller cmd/devbox-controller/main.go
 
 .PHONY: build-transform
 build-transform: ## Build transform tool binary.

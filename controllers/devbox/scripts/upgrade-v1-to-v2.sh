@@ -76,12 +76,12 @@ perform_backup() {
     echo "✅ Backup completed"
 }
 
-# Function to pause devboxes and controller
-perform_pause() {
+# Function to pause devboxes
+perform_pause_devboxes() {
     local dry_run=${1:-false}
     local namespace=${2:-""}
 
-    echo "⏸️  Step 2: Pausing devboxes and controller..."
+    echo "⏸️  Step 2a: Pausing devboxes..."
 
     local cmd="$PROJECT_ROOT/bin/devbox-pause --backup-dir=$BACKUP_DIR"
 
@@ -96,7 +96,25 @@ perform_pause() {
     echo "  Executing: $cmd"
     $cmd
 
-    echo "✅ Pause completed"
+    echo "✅ Devboxes paused"
+}
+
+# Function to pause controller
+perform_pause_controller() {
+    local dry_run=${1:-false}
+
+    echo "⏸️  Step 2b: Pausing controller..."
+
+    local cmd="$PROJECT_ROOT/bin/devbox-controller --action=pause --backup-dir=$BACKUP_DIR"
+
+    if [ "$dry_run" = "true" ]; then
+        cmd="$cmd --dry-run"
+    fi
+
+    echo "  Executing: $cmd"
+    $cmd
+
+    echo "✅ Controller paused"
 }
 
 # Function to update CRDs
@@ -201,12 +219,14 @@ Options:
   --dry-run        Run in dry-run mode (show what would be done)
   --namespace NS   Limit upgrade to specific namespace
   --skip-backup    Skip backup step
-  --skip-pause     Skip pause step
+  --skip-pause     Skip pause step (both devboxes and controller)
   --skip-build     Skip building tools
   --only-backup    Only perform backup
-  --only-pause     Only pause devboxes/controller
+  --only-pause     Only pause devboxes and controller
   --only-transform Only transform CRs
   --help           Show this help message
+
+Note: Controller and devbox pausing are now separate steps for better control.
 
 Examples:
   $0                           # Full upgrade process
@@ -314,7 +334,8 @@ main() {
 
     # Step 2: Pause
     if [ "$skip_pause" = "false" ]; then
-        perform_pause "$dry_run" "$namespace"
+        perform_pause_devboxes "$dry_run" "$namespace"
+        perform_pause_controller "$dry_run"
         if [ "$only_pause" = "true" ]; then
             echo "🎉 Pause-only process completed!"
             exit 0

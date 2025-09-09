@@ -24,17 +24,16 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"k8s.io/apimachinery/pkg/runtime"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	devboxv1alpha1 "github.com/labring/sealos/controllers/devbox/api/v1alpha1"
-	devboxv1alpha2 "github.com/labring/sealos/controllers/devbox/api/v1alpha2"
 	"github.com/labring/sealos/controllers/devbox/pkg/upgrade"
+	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 )
 
 var (
@@ -45,7 +44,6 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(devboxv1alpha1.AddToScheme(scheme))
-	utilruntime.Must(devboxv1alpha2.AddToScheme(scheme))
 }
 
 type StatusConfig struct {

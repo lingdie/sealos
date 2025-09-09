@@ -73,7 +73,6 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
-
 	kubeConfig := ctrl.GetConfigOrDie()
 	k8sClient, err := client.New(kubeConfig, client.Options{Scheme: scheme})
 	if err != nil {
