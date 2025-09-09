@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -34,7 +35,6 @@ import (
 
 	devboxv1alpha1 "github.com/labring/sealos/controllers/devbox/api/v1alpha1"
 	devboxv1alpha2 "github.com/labring/sealos/controllers/devbox/api/v1alpha2"
-	"github.com/labring/sealos/controllers/devbox/cmd/devbox-pause/common"
 	"github.com/labring/sealos/controllers/devbox/pkg/upgrade"
 )
 
@@ -49,8 +49,19 @@ func init() {
 	utilruntime.Must(devboxv1alpha2.AddToScheme(scheme))
 }
 
+// DevboxBackupState 记录devbox的原始状态，用于回滚
+type DevboxBackupState struct {
+	Name        string                     `json:"name"`
+	Namespace   string                     `json:"namespace"`
+	State       devboxv1alpha1.DevboxState `json:"state"`
+	Phase       devboxv1alpha1.DevboxPhase `json:"phase"`
+	OperationID string                     `json:"operationId"`
+	BackupTime  time.Time                  `json:"backupTime"`
+}
+
 type DevboxStopConfig struct {
-	common.BaseConfig
+	DryRun        bool
+	BackupDir     string
 	Namespace     string
 	CommitTimeout time.Duration
 }
@@ -114,14 +125,14 @@ func stopAllDevboxes(ctx context.Context, k8sClient client.Client, config Devbox
 
 	setupLog.Info("Found Devboxes to stop", "count", len(devboxList.Items))
 
-	var backupStates []common.DevboxBackupState
+	var backupStates []DevboxBackupState
 	operationID := fmt.Sprintf("stop-%d", time.Now().Unix())
 
 	for i := range devboxList.Items {
 		devbox := &devboxList.Items[i]
 
 		// 记录原始状态
-		backupState := common.DevboxBackupState{
+		backupState := DevboxBackupState{
 			Name:        devbox.Name,
 			Namespace:   devbox.Namespace,
 			State:       devbox.Spec.State,
@@ -194,10 +205,24 @@ func stopAllDevboxes(ctx context.Context, k8sClient client.Client, config Devbox
 	// 保存备份状态到文件
 	if !config.DryRun {
 		backupStatesFile := filepath.Join(config.BackupDir, "devbox_backup_states.json")
-		if err := common.SaveBackupStates(backupStates, backupStatesFile); err != nil {
+		if err := saveBackupStates(backupStates, backupStatesFile); err != nil {
 			return fmt.Errorf("failed to save backup states: %w", err)
 		}
 		setupLog.Info("Saved devbox backup states", "file", backupStatesFile, "operation-id", operationID)
+	}
+
+	return nil
+}
+
+// saveBackupStates 保存备份状态到JSON文件
+func saveBackupStates(states []DevboxBackupState, filename string) error {
+	data, err := json.MarshalIndent(states, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal backup states: %w", err)
+	}
+
+	if err := os.WriteFile(filename, data, 0644); err != nil {
+		return fmt.Errorf("failed to write backup states file: %w", err)
 	}
 
 	return nil
