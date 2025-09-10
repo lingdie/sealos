@@ -196,20 +196,21 @@ func restoreDevboxState(ctx context.Context, k8sClient client.Client, state Devb
 		}
 	}
 
-	// 恢复状态
-	devbox.Spec.State = state.State
-
 	// 添加恢复注解
 	restoreInfo := upgrade.UpgradeInfo{
 		OperationID: fmt.Sprintf("restore-%s", state.OperationID),
 		Step:        upgrade.UpgradeStepRestore,
-		Status:      upgrade.UpgradeStatusRolledBack,
 		Version:     "restore-v1alpha2",
 	}
 	if err := upgrade.AddUpgradeAnnotationsV1Alpha2(ctx, k8sClient, devbox, restoreInfo); err != nil {
 		setupLog.Error(err, "Failed to add restore annotations")
-		// 继续执行，不中断恢复过程
 	}
+
+	if err := k8sClient.Get(ctx, key, devbox); err != nil {
+		return fmt.Errorf("failed to get devbox %s/%s: %w", state.Namespace, state.Name, err)
+	}
+	// 恢复状态
+	devbox.Spec.State = state.State
 
 	if err := k8sClient.Update(ctx, devbox); err != nil {
 		return fmt.Errorf("failed to restore devbox %s/%s: %w", state.Namespace, state.Name, err)

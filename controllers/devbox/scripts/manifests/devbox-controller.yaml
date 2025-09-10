@@ -1,21 +1,350 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: devbox
+  name: devbox-leader-election-role
+  namespace: devbox-system
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: devbox
+  name: devbox-devbox-admin-role
+rules:
+- apiGroups:
+  - devbox.sealos.io
+  resources:
+  - devboxes
+  verbs:
+  - '*'
+- apiGroups:
+  - devbox.sealos.io
+  resources:
+  - devboxes/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: devbox
+  name: devbox-devbox-editor-role
+rules:
+- apiGroups:
+  - devbox.sealos.io
+  resources:
+  - devboxes
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - devbox.sealos.io
+  resources:
+  - devboxes/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: devbox
+  name: devbox-devbox-viewer-role
+rules:
+- apiGroups:
+  - devbox.sealos.io
+  resources:
+  - devboxes
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - devbox.sealos.io
+  resources:
+  - devboxes/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: devbox
+  name: devbox-devboxrelease-admin-role
+rules:
+- apiGroups:
+  - devbox.sealos.io
+  resources:
+  - devboxreleases
+  verbs:
+  - '*'
+- apiGroups:
+  - devbox.sealos.io
+  resources:
+  - devboxreleases/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: devbox
+  name: devbox-devboxrelease-editor-role
+rules:
+- apiGroups:
+  - devbox.sealos.io
+  resources:
+  - devboxreleases
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - devbox.sealos.io
+  resources:
+  - devboxreleases/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: devbox
+  name: devbox-devboxrelease-viewer-role
+rules:
+- apiGroups:
+  - devbox.sealos.io
+  resources:
+  - devboxreleases
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - devbox.sealos.io
+  resources:
+  - devboxreleases/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: devbox-manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - events
+  - pods
+  - secrets
+  - services
+  verbs:
+  - '*'
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - nodes/status
+  verbs:
+  - get
+- apiGroups:
+  - ""
+  resources:
+  - pods/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - devbox.sealos.io
+  resources:
+  - devboxes
+  - devboxreleases
+  - runtimeclasses
+  - runtimes
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - devbox.sealos.io
+  resources:
+  - devboxes/finalizers
+  - devboxreleases/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - devbox.sealos.io
+  resources:
+  - devboxes/status
+  - devboxreleases/status
+  verbs:
+  - get
+  - patch
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: devbox-metrics-auth-role
+rules:
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: devbox-metrics-reader
+rules:
+- nonResourceURLs:
+  - /metrics
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: devbox
+  name: devbox-leader-election-rolebinding
+  namespace: devbox-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: devbox-leader-election-role
+subjects:
+- kind: ServiceAccount
+  name: devbox-controller-manager
+  namespace: devbox-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: devbox
+  name: devbox-manager-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: devbox-manager-role
+subjects:
+- kind: ServiceAccount
+  name: devbox-controller-manager
+  namespace: devbox-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: devbox-metrics-auth-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: devbox-metrics-auth-role
+subjects:
+- kind: ServiceAccount
+  name: devbox-controller-manager
+  namespace: devbox-system
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   labels:
+    app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: devbox
     control-plane: controller-manager
   name: devbox-controller-manager
   namespace: devbox-system
 spec:
-  revisionHistoryLimit: 10
   selector:
     matchLabels:
       control-plane: controller-manager
   template:
     metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
       labels:
         control-plane: controller-manager
     spec:
+      nodeSelector:
+        devbox.sealos.io/node: ""
       containers:
       - args:
         - --metrics-bind-address=:8443
@@ -23,38 +352,27 @@ spec:
         - --registry-addr=sealos.hub:5000
         - --registry-user=admin
         - --registry-password=passw0rd
-        - --restart-predicate-duration=1000000h
         command:
         - /manager
+        image: ghcr.io/lingdie/sealos-devbox-controller:v4.0.0
         env:
         - name: NODE_NAME
           valueFrom:
             fieldRef:
-              apiVersion: v1
               fieldPath: spec.nodeName
-        image: crpi-5yq5lj8mtkm1w8pm.cn-hangzhou.personal.cr.aliyuncs.com/linzichun-namespace/devbox-controller:v2.7
-        imagePullPolicy: IfNotPresent
         livenessProbe:
-          failureThreshold: 3
           httpGet:
             path: /healthz
             port: 8081
-            scheme: HTTP
           initialDelaySeconds: 15
           periodSeconds: 20
-          successThreshold: 1
-          timeoutSeconds: 1
         name: manager
         readinessProbe:
-          failureThreshold: 3
           httpGet:
             path: /readyz
             port: 8081
-            scheme: HTTP
           initialDelaySeconds: 5
           periodSeconds: 10
-          successThreshold: 1
-          timeoutSeconds: 1
         resources:
           limits:
             cpu: 1500m
@@ -65,115 +383,40 @@ spec:
         securityContext:
           privileged: true
           runAsUser: 0
-        terminationMessagePath: /dev/termination-log
-        terminationMessagePolicy: File
         volumeMounts:
-        - mountPath: /run/containerd
-          name: containerd-run-dir
-        - mountPath: /var/run/containerd
-          name: containerd-var-run-dir
-        - mountPath: /var/lib/containerd
+        - name: containerd-run-dir
+          mountPath: /run/containerd
+        - name: containerd-var-run-dir
+          mountPath: /var/run/containerd
+        - name: containerd-dir
+          mountPath: /var/lib/containerd
           mountPropagation: Bidirectional
-          name: containerd-dir
-        - mountPath: /etc/containerd/certs.d
-          name: hosts-dir
-        - mountPath: /tmp
-          name: tmp-dir
-      - args:
-        - --grpc-port=9090
-        - --storage-type=lvm
-        - --monitor-interval=5s
-        - --enable-grpc=true
-        - --enable-monitoring=true
-        command:
-        - /app/storage-server
-        env:
-        - name: NODE_NAME
-          valueFrom:
-            fieldRef:
-              apiVersion: v1
-              fieldPath: spec.nodeName
-        image: crpi-5yq5lj8mtkm1w8pm.cn-hangzhou.personal.cr.aliyuncs.com/linzichun-namespace/storage-server:v2.1
-        imagePullPolicy: IfNotPresent
-        livenessProbe:
-          exec:
-            command:
-            - grpc-health-probe
-            - -addr=localhost:9090
-          failureThreshold: 3
-          initialDelaySeconds: 15
-          periodSeconds: 20
-          successThreshold: 1
-          timeoutSeconds: 5
-        name: storage-server
-        ports:
-        - containerPort: 9090
-          name: grpc
-          protocol: TCP
-        readinessProbe:
-          exec:
-            command:
-            - grpc-health-probe
-            - -addr=localhost:9090
-          failureThreshold: 3
-          initialDelaySeconds: 5
-          periodSeconds: 10
-          successThreshold: 1
-          timeoutSeconds: 3
-        resources:
-          limits:
-            cpu: "1"
-            memory: 1Gi
-          requests:
-            cpu: 100m
-            memory: 128Mi
-        securityContext:
-          allowPrivilegeEscalation: true
-          privileged: true
-          runAsGroup: 0
-          runAsUser: 0
-        terminationMessagePath: /dev/termination-log
-        terminationMessagePolicy: File
-        volumeMounts:
-        - mountPath: /dev
-          name: device-dir
-      dnsPolicy: ClusterFirst
-      nodeSelector:
-        devbox.sealos.io/node: ""
-      restartPolicy: Always
-      schedulerName: default-scheduler
-      securityContext:
-        runAsUser: 0
-      serviceAccount: devbox-controller-manager
-      serviceAccountName: devbox-controller-manager
-      terminationGracePeriodSeconds: 10
+        - name: hosts-dir
+          mountPath: /etc/containerd/certs.d
+        - name: tmp-dir
+          mountPath: /tmp
       volumes:
-      - hostPath:
+      - name: containerd-run-dir
+        hostPath:
           path: /run/containerd
           type: Directory
-        name: containerd-run-dir
-      - hostPath:
+      - name: containerd-var-run-dir
+        hostPath:
           path: /var/run/containerd
           type: Directory
-        name: containerd-var-run-dir
-      - hostPath:
+      - name: containerd-dir
+        hostPath:
           path: /var/lib/containerd
           type: Directory
-        name: containerd-dir
-      - hostPath:
+      - name: hosts-dir
+        hostPath:
           path: /etc/containerd/certs.d
           type: Directory
-        name: hosts-dir
-      - hostPath:
+      - name: tmp-dir
+        hostPath:
           path: /tmp
           type: Directory
-        name: tmp-dir
-      - hostPath:
-          path: /dev
-          type: Directory
-        name: device-dir
-  updateStrategy:
-    rollingUpdate:
-      maxSurge: 0
-      maxUnavailable: 1
-    type: RollingUpdate
+      securityContext:
+        runAsUser: 0
+      serviceAccountName: devbox-controller-manager
+      terminationGracePeriodSeconds: 10
