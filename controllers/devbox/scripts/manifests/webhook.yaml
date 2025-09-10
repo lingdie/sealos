@@ -78,7 +78,7 @@ spec:
             fieldRef:
               apiVersion: v1
               fieldPath: spec.nodeName
-        image: ghcr.io/lingdie/sealos-devbox-webhook:v1.0.1
+        image: ghcr.io/lingdie/sealos-devbox-webhook:v1.2.0
         livenessProbe:
           httpGet:
             path: /healthz
