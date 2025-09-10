@@ -34,6 +34,7 @@ import (
 
 	devboxv1alpha1 "github.com/labring/sealos/controllers/devbox/api/v1alpha1"
 	devboxv1alpha2 "github.com/labring/sealos/controllers/devbox/api/v1alpha2"
+	"github.com/labring/sealos/controllers/devbox/pkg/upgrade"
 )
 
 var (
@@ -54,6 +55,66 @@ type TransformConfig struct {
 	OnlyReleases      bool
 	BatchSize         int
 	DelayBetweenBatch time.Duration
+}
+
+// RetryConfig 重试配置
+type RetryConfig struct {
+	MaxRetries int
+	BaseDelay  time.Duration
+	MaxDelay   time.Duration
+}
+
+// DefaultRetryConfig 默认重试配置
+var DefaultRetryConfig = RetryConfig{
+	MaxRetries: 3,
+	BaseDelay:  100 * time.Millisecond,
+	MaxDelay:   5 * time.Second,
+}
+
+// retryWithBackoff 执行带指数退避的重试操作
+func retryWithBackoff(ctx context.Context, operation func() error, config RetryConfig, operationName string) error {
+	var lastErr error
+
+	for attempt := 0; attempt <= config.MaxRetries; attempt++ {
+		if attempt > 0 {
+			// 计算退避延迟
+			delay := config.BaseDelay * time.Duration(1<<uint(attempt-1))
+			if delay > config.MaxDelay {
+				delay = config.MaxDelay
+			}
+
+			setupLog.Info("Retrying operation",
+				"operation", operationName,
+				"attempt", attempt+1,
+				"maxRetries", config.MaxRetries+1,
+				"delay", delay)
+
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+
+		if err := operation(); err != nil {
+			lastErr = err
+			setupLog.Error(err, "Operation failed",
+				"operation", operationName,
+				"attempt", attempt+1,
+				"maxRetries", config.MaxRetries+1)
+			continue
+		}
+
+		// 操作成功
+		if attempt > 0 {
+			setupLog.Info("Operation succeeded after retry",
+				"operation", operationName,
+				"attempt", attempt+1)
+		}
+		return nil
+	}
+
+	return fmt.Errorf("operation %s failed after %d attempts: %w", operationName, config.MaxRetries+1, lastErr)
 }
 
 func main() {
@@ -153,15 +214,32 @@ func transformDevboxes(ctx context.Context, k8sClient client.Client, config Tran
 			}
 
 			// 强制存储版本转换
-			if err := forceStorageVersionUpdate(ctx, k8sClient, devbox); err != nil {
+			transformOperation := func() error {
+				return forceStorageVersionUpdate(ctx, k8sClient, devbox)
+			}
+
+			if err := retryWithBackoff(ctx, transformOperation, DefaultRetryConfig, fmt.Sprintf("transform devbox %s/%s", devbox.Namespace, devbox.Name)); err != nil {
 				setupLog.Error(err, "Failed to transform Devbox",
 					"name", devbox.Name,
 					"namespace", devbox.Namespace)
-				// 转换失败，记录错误但不更新annotation以避免版本冲突
+
+				// 标记转换失败
+				failedAnnotationOperation := func() error {
+					return upgrade.UpdateUpgradeAnnotationV1Alpha2(ctx, k8sClient, devbox, upgrade.AnnotationUpgradeStatus, upgrade.UpgradeStatusFailed)
+				}
+				if updateErr := retryWithBackoff(ctx, failedAnnotationOperation, DefaultRetryConfig, fmt.Sprintf("update upgrade status annotation to failed for %s/%s", devbox.Namespace, devbox.Name)); updateErr != nil {
+					setupLog.Error(updateErr, "Failed to update upgrade status annotation")
+				}
 				return err
 			}
 
-			// 转换完成，不更新annotation以避免版本冲突
+			// 转换完成，标记为已完成
+			completedAnnotationOperation := func() error {
+				return upgrade.UpdateUpgradeAnnotationV1Alpha2(ctx, k8sClient, devbox, upgrade.AnnotationUpgradeStatus, upgrade.UpgradeStatusCompleted)
+			}
+			if err := retryWithBackoff(ctx, completedAnnotationOperation, DefaultRetryConfig, fmt.Sprintf("update upgrade status annotation to completed for %s/%s", devbox.Namespace, devbox.Name)); err != nil {
+				setupLog.Error(err, "Failed to update upgrade status annotation")
+			}
 
 			setupLog.Info("Successfully transformed Devbox",
 				"name", devbox.Name,
@@ -219,11 +297,31 @@ func transformDevboxReleases(ctx context.Context, k8sClient client.Client, confi
 			}
 
 			// 强制存储版本转换
-			if err := forceStorageVersionUpdateRelease(ctx, k8sClient, devboxRelease); err != nil {
+			transformReleaseOperation := func() error {
+				return forceStorageVersionUpdateRelease(ctx, k8sClient, devboxRelease)
+			}
+
+			if err := retryWithBackoff(ctx, transformReleaseOperation, DefaultRetryConfig, fmt.Sprintf("transform devboxrelease %s/%s", devboxRelease.Namespace, devboxRelease.Name)); err != nil {
 				setupLog.Error(err, "Failed to transform DevboxRelease",
 					"name", devboxRelease.Name,
 					"namespace", devboxRelease.Namespace)
+
+				// 标记转换失败
+				failedReleaseAnnotationOperation := func() error {
+					return upgrade.UpdateUpgradeAnnotationV1Alpha2Release(ctx, k8sClient, devboxRelease, upgrade.AnnotationUpgradeStatus, upgrade.UpgradeStatusFailed)
+				}
+				if updateErr := retryWithBackoff(ctx, failedReleaseAnnotationOperation, DefaultRetryConfig, fmt.Sprintf("update upgrade status annotation to failed for devboxrelease %s/%s", devboxRelease.Namespace, devboxRelease.Name)); updateErr != nil {
+					setupLog.Error(updateErr, "Failed to update upgrade status annotation")
+				}
 				return err
+			}
+
+			// 转换完成，标记为已完成
+			completedReleaseAnnotationOperation := func() error {
+				return upgrade.UpdateUpgradeAnnotationV1Alpha2Release(ctx, k8sClient, devboxRelease, upgrade.AnnotationUpgradeStatus, upgrade.UpgradeStatusCompleted)
+			}
+			if err := retryWithBackoff(ctx, completedReleaseAnnotationOperation, DefaultRetryConfig, fmt.Sprintf("update upgrade status annotation to completed for devboxrelease %s/%s", devboxRelease.Namespace, devboxRelease.Name)); err != nil {
+				setupLog.Error(err, "Failed to update upgrade status annotation")
 			}
 
 			setupLog.Info("Successfully transformed DevboxRelease",

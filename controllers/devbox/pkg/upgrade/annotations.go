@@ -302,6 +302,28 @@ func UpdateUpgradeAnnotationV1Alpha2(ctx context.Context, k8sClient client.Clien
 	return nil
 }
 
+func UpdateUpgradeAnnotationV1Alpha2Release(ctx context.Context, k8sClient client.Client, devboxRelease *devboxv1alpha2.DevBoxRelease, annotationKey, value string) error {
+	// 获取最新版本
+	latest := &devboxv1alpha2.DevBoxRelease{}
+	key := types.NamespacedName{Name: devboxRelease.Name, Namespace: devboxRelease.Namespace}
+	if err := k8sClient.Get(ctx, key, latest); err != nil {
+		return fmt.Errorf("failed to get latest devboxrelease: %w", err)
+	}
+
+	if latest.Annotations == nil {
+		latest.Annotations = make(map[string]string)
+	}
+
+	latest.Annotations[annotationKey] = value
+	latest.Annotations[AnnotationUpgradeTimestamp] = time.Now().Format(time.RFC3339)
+
+	if err := k8sClient.Update(ctx, latest); err != nil {
+		return fmt.Errorf("failed to update devboxrelease annotation: %w", err)
+	}
+
+	return nil
+}
+
 // GetUpgradeInfoV1Alpha2 获取devbox的升级信息 (v1alpha2版本)
 func GetUpgradeInfoV1Alpha2(devbox *devboxv1alpha2.Devbox) UpgradeInfo {
 	if devbox.Annotations == nil {

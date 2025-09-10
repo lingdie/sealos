@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -64,6 +65,63 @@ type DevboxStopConfig struct {
 	BackupDir     string
 	Namespace     string
 	CommitTimeout time.Duration
+}
+
+// RetryConfig 重试配置
+type RetryConfig struct {
+	MaxRetries int
+	BaseDelay  time.Duration
+	MaxDelay   time.Duration
+}
+
+// DefaultRetryConfig 默认重试配置
+var DefaultRetryConfig = RetryConfig{
+	MaxRetries: 3,
+	BaseDelay:  100 * time.Millisecond,
+	MaxDelay:   5 * time.Second,
+}
+
+// retryWithBackoff 执行带指数退避的重试操作
+func retryWithBackoff(ctx context.Context, operation func() error, config RetryConfig, operationName string) error {
+	var lastErr error
+
+	for attempt := 0; attempt <= config.MaxRetries; attempt++ {
+		if attempt > 0 {
+			// 计算退避延迟
+			delay := config.BaseDelay * time.Duration(1<<uint(attempt-1))
+			if delay > config.MaxDelay {
+				delay = config.MaxDelay
+			}
+
+			setupLog.Info("Retrying operation",
+				"operation", operationName,
+				"attempt", attempt+1,
+				"delay", delay)
+
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+
+		err := operation()
+		if err == nil {
+			if attempt > 0 {
+				setupLog.Info("Operation succeeded after retry",
+					"operation", operationName,
+					"attempts", attempt+1)
+			}
+			return nil
+		}
+
+		lastErr = err
+		setupLog.Error(err, "Operation failed",
+			"operation", operationName,
+			"attempt", attempt+1)
+	}
+
+	return fmt.Errorf("operation %s failed after %d attempts: %w", operationName, config.MaxRetries+1, lastErr)
 }
 
 func main() {
@@ -170,20 +228,37 @@ func stopAllDevboxes(ctx context.Context, k8sClient client.Client, config Devbox
 			return err
 		}
 
+		// 重新get devbox
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: devbox.Name, Namespace: devbox.Namespace}, devbox); err != nil {
+			return fmt.Errorf("failed to get devbox: %w", err)
+		}
+
 		// 如果devbox正在运行，需要停止它
 		if devbox.Spec.State == devboxv1alpha1.DevboxStateRunning {
 			// 设置为Stopped状态
 			devbox.Spec.State = devboxv1alpha1.DevboxStateStopped
-			if err := k8sClient.Update(ctx, devbox); err != nil {
+
+			// 使用重试逻辑更新devbox状态
+			updateOperation := func() error {
+				return k8sClient.Update(ctx, devbox)
+			}
+
+			if err := retryWithBackoff(ctx, updateOperation, DefaultRetryConfig, fmt.Sprintf("update devbox %s/%s state", devbox.Namespace, devbox.Name)); err != nil {
 				// 标记为失败
-				if updateErr := upgrade.UpdateUpgradeAnnotationv1alpha1(ctx, k8sClient, devbox, upgrade.AnnotationUpgradeStatus, upgrade.UpgradeStatusFailed); updateErr != nil {
+				failAnnotationOperation := func() error {
+					return upgrade.UpdateUpgradeAnnotationv1alpha1(ctx, k8sClient, devbox, upgrade.AnnotationUpgradeStatus, upgrade.UpgradeStatusFailed)
+				}
+				if updateErr := retryWithBackoff(ctx, failAnnotationOperation, DefaultRetryConfig, fmt.Sprintf("update upgrade status annotation to failed for %s/%s", devbox.Namespace, devbox.Name)); updateErr != nil {
 					setupLog.Error(updateErr, "Failed to update upgrade status annotation")
 				}
 				return fmt.Errorf("failed to stop devbox %s/%s: %w", devbox.Namespace, devbox.Name, err)
 			}
 
 			// 标记停止完成
-			if err := upgrade.UpdateUpgradeAnnotationv1alpha1(ctx, k8sClient, devbox, upgrade.AnnotationUpgradeStatus, upgrade.UpgradeStatusStopped); err != nil {
+			successAnnotationOperation := func() error {
+				return upgrade.UpdateUpgradeAnnotationv1alpha1(ctx, k8sClient, devbox, upgrade.AnnotationUpgradeStatus, upgrade.UpgradeStatusStopped)
+			}
+			if err := retryWithBackoff(ctx, successAnnotationOperation, DefaultRetryConfig, fmt.Sprintf("update upgrade status annotation to stopped for %s/%s", devbox.Namespace, devbox.Name)); err != nil {
 				setupLog.Error(err, "Failed to update upgrade status annotation")
 			}
 
@@ -193,7 +268,10 @@ func stopAllDevboxes(ctx context.Context, k8sClient client.Client, config Devbox
 				"operation-id", operationID)
 		} else {
 			// 如果不需要停止，直接标记为已处理
-			if err := upgrade.UpdateUpgradeAnnotationv1alpha1(ctx, k8sClient, devbox, upgrade.AnnotationUpgradeStatus, upgrade.UpgradeStatusStopped); err != nil {
+			noStopAnnotationOperation := func() error {
+				return upgrade.UpdateUpgradeAnnotationv1alpha1(ctx, k8sClient, devbox, upgrade.AnnotationUpgradeStatus, upgrade.UpgradeStatusStopped)
+			}
+			if err := retryWithBackoff(ctx, noStopAnnotationOperation, DefaultRetryConfig, fmt.Sprintf("update upgrade status annotation to stopped (no stop needed) for %s/%s", devbox.Namespace, devbox.Name)); err != nil {
 				setupLog.Error(err, "Failed to update upgrade status annotation")
 			}
 		}
