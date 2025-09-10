@@ -4,6 +4,7 @@
 *.dll
 *.so
 *.dylib
+backup
 bin/*
 Dockerfile.cross
 

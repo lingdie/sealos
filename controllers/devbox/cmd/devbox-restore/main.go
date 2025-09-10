@@ -33,7 +33,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	devboxv1alpha1 "github.com/labring/sealos/controllers/devbox/api/v1alpha1"
 	devboxv1alpha2 "github.com/labring/sealos/controllers/devbox/api/v1alpha2"
 	"github.com/labring/sealos/controllers/devbox/pkg/upgrade"
 )
@@ -45,7 +44,6 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(devboxv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(devboxv1alpha2.AddToScheme(scheme))
 }
 
@@ -53,8 +51,8 @@ func init() {
 type DevboxBackupState struct {
 	Name        string                     `json:"name"`
 	Namespace   string                     `json:"namespace"`
-	State       devboxv1alpha1.DevboxState `json:"state"`
-	Phase       devboxv1alpha1.DevboxPhase `json:"phase"`
+	State       devboxv1alpha2.DevboxState `json:"state"`
+	Phase       devboxv1alpha2.DevboxPhase `json:"phase"`
 	OperationID string                     `json:"operationId"`
 	BackupTime  string                     `json:"backupTime"`
 }
@@ -171,7 +169,7 @@ func restoreDevboxState(ctx context.Context, k8sClient client.Client, state Devb
 	}
 
 	// 获取当前devbox
-	devbox := &devboxv1alpha1.Devbox{}
+	devbox := &devboxv1alpha2.Devbox{}
 	key := types.NamespacedName{Name: state.Name, Namespace: state.Namespace}
 	if err := k8sClient.Get(ctx, key, devbox); err != nil {
 		return fmt.Errorf("failed to get devbox %s/%s: %w", state.Namespace, state.Name, err)
@@ -188,7 +186,7 @@ func restoreDevboxState(ctx context.Context, k8sClient client.Client, state Devb
 
 	// 检查是否被修改过（如果不是强制模式）
 	if !config.Force {
-		upgradeInfo := upgrade.GetUpgradeInfo(devbox)
+		upgradeInfo := upgrade.GetUpgradeInfoV1Alpha2(devbox)
 		if upgradeInfo.Status != "" {
 			setupLog.Info("Devbox has upgrade status, may have been modified",
 				"name", state.Name,
@@ -206,9 +204,9 @@ func restoreDevboxState(ctx context.Context, k8sClient client.Client, state Devb
 		OperationID: fmt.Sprintf("restore-%s", state.OperationID),
 		Step:        upgrade.UpgradeStepRestore,
 		Status:      upgrade.UpgradeStatusRolledBack,
-		Version:     "restore-v1alpha1",
+		Version:     "restore-v1alpha2",
 	}
-	if err := upgrade.AddUpgradeAnnotations(ctx, k8sClient, devbox, restoreInfo); err != nil {
+	if err := upgrade.AddUpgradeAnnotationsV1Alpha2(ctx, k8sClient, devbox, restoreInfo); err != nil {
 		setupLog.Error(err, "Failed to add restore annotations")
 		// 继续执行，不中断恢复过程
 	}

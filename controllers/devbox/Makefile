@@ -67,20 +67,15 @@ test: manifests generate fmt vet envtest ## Run tests.
 build: ## Build manager binary.
 	CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -ldflags "-s -w" -trimpath -o bin/manager cmd/main.go
 
-.PHONY: build-upgrade
-build-upgrade: ## Build upgrade tool binary.
-	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/upgrade cmd/upgrade/main.go
-
 .PHONY: build-upgrade-tools
 build-upgrade-tools: ## Build all upgrade tools.
 	@echo "Building all upgrade tools..."
-	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/devbox-backup cmd/devbox-backup/main.go
-	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/devbox-controller cmd/devbox-controller/main.go
-	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/devbox-transform cmd/devbox-transform/main.go
-	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/devbox-crd cmd/devbox-crd/main.go
-	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/devbox-restore cmd/devbox-restore/main.go
-	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/devbox-status cmd/devbox-status/main.go
-	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/devbox-stop cmd/devbox-stop/main.go
+	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o scripts/upgrade-tools/devbox-backup cmd/devbox-backup/main.go
+	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o scripts/upgrade-tools/devbox-transform cmd/devbox-transform/main.go
+	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o scripts/upgrade-tools/devbox-crd cmd/devbox-crd/main.go
+	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o scripts/upgrade-tools/devbox-restore cmd/devbox-restore/main.go
+	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o scripts/upgrade-tools/devbox-status cmd/devbox-status/main.go
+	CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o scripts/upgrade-tools/devbox-stop cmd/devbox-stop/main.go
 	@echo "All upgrade tools built successfully!"
 
 .PHONY: build-backup

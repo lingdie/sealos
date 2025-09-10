@@ -25,6 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	devboxv1alpha1 "github.com/labring/sealos/controllers/devbox/api/v1alpha1"
+	devboxv1alpha2 "github.com/labring/sealos/controllers/devbox/api/v1alpha2"
 )
 
 // Upgrade related annotations
@@ -43,7 +44,7 @@ const (
 const (
 	UpgradeStatusPending    = "pending"
 	UpgradeStatusInProgress = "in-progress"
-	UpgradeStatusPaused     = "paused"
+	UpgradeStatusStopped    = "stopped"
 	UpgradeStatusCompleted  = "completed"
 	UpgradeStatusFailed     = "failed"
 	UpgradeStatusRolledBack = "rolled-back"
@@ -52,7 +53,7 @@ const (
 // Upgrade steps
 const (
 	UpgradeStepBackup    = "backup"
-	UpgradeStepPause     = "pause"
+	UpgradeStepStop      = "stop"
 	UpgradeStepCRDUpdate = "crd-update"
 	UpgradeStepTransform = "transform"
 	UpgradeStepFinalize  = "finalize"
@@ -119,8 +120,8 @@ func AddUpgradeAnnotations(ctx context.Context, k8sClient client.Client, devbox 
 	return nil
 }
 
-// UpdateUpgradeAnnotation 更新单个升级annotation
-func UpdateUpgradeAnnotation(ctx context.Context, k8sClient client.Client, devbox *devboxv1alpha1.Devbox, annotationKey, value string) error {
+// UpdateUpgradeAnnotationv1alpha1 更新单个升级annotation
+func UpdateUpgradeAnnotationv1alpha1(ctx context.Context, k8sClient client.Client, devbox *devboxv1alpha1.Devbox, annotationKey, value string) error {
 	// 获取最新版本
 	latest := &devboxv1alpha1.Devbox{}
 	key := types.NamespacedName{Name: devbox.Name, Namespace: devbox.Namespace}
@@ -225,4 +226,95 @@ func HasUpgradeFailed(devbox *devboxv1alpha1.Devbox) bool {
 
 	status, exists := devbox.Annotations[AnnotationUpgradeStatus]
 	return exists && status == UpgradeStatusFailed
+}
+
+// V1Alpha2 版本的函数
+
+// AddUpgradeAnnotationsV1Alpha2 添加升级相关的annotations (v1alpha2版本)
+func AddUpgradeAnnotationsV1Alpha2(ctx context.Context, k8sClient client.Client, devbox *devboxv1alpha2.Devbox, info UpgradeInfo) error {
+	// 获取最新版本
+	latest := &devboxv1alpha2.Devbox{}
+	key := types.NamespacedName{Name: devbox.Name, Namespace: devbox.Namespace}
+	if err := k8sClient.Get(ctx, key, latest); err != nil {
+		return fmt.Errorf("failed to get latest devbox: %w", err)
+	}
+
+	if latest.Annotations == nil {
+		latest.Annotations = make(map[string]string)
+	}
+
+	// 记录原始状态（只在第一次设置）
+	if info.OriginalState != "" {
+		if _, exists := latest.Annotations[AnnotationOriginalState]; !exists {
+			latest.Annotations[AnnotationOriginalState] = info.OriginalState
+		}
+	}
+
+	// 设置升级相关annotations
+	if info.OperationID != "" {
+		latest.Annotations[AnnotationUpgradeOperation] = info.OperationID
+	}
+	if info.Step != "" {
+		latest.Annotations[AnnotationUpgradeStep] = info.Step
+	}
+	if info.Status != "" {
+		latest.Annotations[AnnotationUpgradeStatus] = info.Status
+	}
+	if info.Version != "" {
+		latest.Annotations[AnnotationUpgradeVersion] = info.Version
+	}
+	if info.Error != "" {
+		latest.Annotations[AnnotationUpgradeError] = info.Error
+	}
+	if info.Progress != "" {
+		latest.Annotations[AnnotationUpgradeProgress] = info.Progress
+	}
+
+	latest.Annotations[AnnotationUpgradeTimestamp] = time.Now().Format(time.RFC3339)
+
+	if err := k8sClient.Update(ctx, latest); err != nil {
+		return fmt.Errorf("failed to update devbox annotations: %w", err)
+	}
+
+	return nil
+}
+
+// UpdateUpgradeAnnotationV1Alpha2 更新单个升级annotation (v1alpha2版本)
+func UpdateUpgradeAnnotationV1Alpha2(ctx context.Context, k8sClient client.Client, devbox *devboxv1alpha2.Devbox, annotationKey, value string) error {
+	// 获取最新版本
+	latest := &devboxv1alpha2.Devbox{}
+	key := types.NamespacedName{Name: devbox.Name, Namespace: devbox.Namespace}
+	if err := k8sClient.Get(ctx, key, latest); err != nil {
+		return fmt.Errorf("failed to get latest devbox: %w", err)
+	}
+
+	if latest.Annotations == nil {
+		latest.Annotations = make(map[string]string)
+	}
+
+	latest.Annotations[annotationKey] = value
+	latest.Annotations[AnnotationUpgradeTimestamp] = time.Now().Format(time.RFC3339)
+
+	if err := k8sClient.Update(ctx, latest); err != nil {
+		return fmt.Errorf("failed to update devbox annotation: %w", err)
+	}
+
+	return nil
+}
+
+// GetUpgradeInfoV1Alpha2 获取devbox的升级信息 (v1alpha2版本)
+func GetUpgradeInfoV1Alpha2(devbox *devboxv1alpha2.Devbox) UpgradeInfo {
+	if devbox.Annotations == nil {
+		return UpgradeInfo{}
+	}
+
+	return UpgradeInfo{
+		OperationID:   devbox.Annotations[AnnotationUpgradeOperation],
+		Step:          devbox.Annotations[AnnotationUpgradeStep],
+		Status:        devbox.Annotations[AnnotationUpgradeStatus],
+		Version:       devbox.Annotations[AnnotationUpgradeVersion],
+		OriginalState: devbox.Annotations[AnnotationOriginalState],
+		Error:         devbox.Annotations[AnnotationUpgradeError],
+		Progress:      devbox.Annotations[AnnotationUpgradeProgress],
+	}
 }

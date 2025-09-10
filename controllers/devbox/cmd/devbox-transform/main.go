@@ -34,7 +34,6 @@ import (
 
 	devboxv1alpha1 "github.com/labring/sealos/controllers/devbox/api/v1alpha1"
 	devboxv1alpha2 "github.com/labring/sealos/controllers/devbox/api/v1alpha2"
-	"github.com/labring/sealos/controllers/devbox/pkg/upgrade"
 )
 
 var (
@@ -117,7 +116,7 @@ func performTransform(ctx context.Context, k8sClient client.Client, config Trans
 }
 
 func transformDevboxes(ctx context.Context, k8sClient client.Client, config TransformConfig) error {
-	devboxList := &devboxv1alpha1.DevboxList{}
+	devboxList := &devboxv1alpha2.DevboxList{}
 	listOpts := []client.ListOption{}
 	if config.Namespace != "" {
 		listOpts = append(listOpts, client.InNamespace(config.Namespace))
@@ -153,38 +152,16 @@ func transformDevboxes(ctx context.Context, k8sClient client.Client, config Tran
 				continue
 			}
 
-			// 更新annotation为transform步骤
-			operationID := fmt.Sprintf("transform-%d", time.Now().Unix())
-			upgradeInfo := upgrade.UpgradeInfo{
-				OperationID: operationID,
-				Step:        upgrade.UpgradeStepTransform,
-				Status:      upgrade.UpgradeStatusInProgress,
-				Version:     "v1alpha1-to-v1alpha2",
-				Progress:    fmt.Sprintf("%d/%d", j+1, len(devboxList.Items)),
-			}
-			if err := upgrade.AddUpgradeAnnotations(ctx, k8sClient, devbox, upgradeInfo); err != nil {
-				setupLog.Error(err, "Failed to add transform annotations",
-					"name", devbox.Name,
-					"namespace", devbox.Namespace)
-				// 继续处理，不中断整个流程
-			}
-
 			// 强制存储版本转换
 			if err := forceStorageVersionUpdate(ctx, k8sClient, devbox); err != nil {
 				setupLog.Error(err, "Failed to transform Devbox",
 					"name", devbox.Name,
 					"namespace", devbox.Namespace)
-				// 标记为失败
-				if updateErr := upgrade.UpdateUpgradeAnnotation(ctx, k8sClient, devbox, upgrade.AnnotationUpgradeStatus, upgrade.UpgradeStatusFailed); updateErr != nil {
-					setupLog.Error(updateErr, "Failed to update upgrade status annotation")
-				}
+				// 转换失败，记录错误但不更新annotation以避免版本冲突
 				return err
 			}
 
-			// 标记转换完成
-			if err := upgrade.UpdateUpgradeAnnotation(ctx, k8sClient, devbox, upgrade.AnnotationUpgradeStatus, upgrade.UpgradeStatusCompleted); err != nil {
-				setupLog.Error(err, "Failed to update upgrade status annotation")
-			}
+			// 转换完成，不更新annotation以避免版本冲突
 
 			setupLog.Info("Successfully transformed Devbox",
 				"name", devbox.Name,
@@ -205,7 +182,7 @@ func transformDevboxes(ctx context.Context, k8sClient client.Client, config Tran
 }
 
 func transformDevboxReleases(ctx context.Context, k8sClient client.Client, config TransformConfig) error {
-	devboxReleaseList := &devboxv1alpha1.DevBoxReleaseList{}
+	devboxReleaseList := &devboxv1alpha2.DevBoxReleaseList{}
 	listOpts := []client.ListOption{}
 	if config.Namespace != "" {
 		listOpts = append(listOpts, client.InNamespace(config.Namespace))
@@ -267,14 +244,14 @@ func transformDevboxReleases(ctx context.Context, k8sClient client.Client, confi
 	return nil
 }
 
-func forceStorageVersionUpdate(ctx context.Context, k8sClient client.Client, devbox *devboxv1alpha1.Devbox) error {
+func forceStorageVersionUpdate(ctx context.Context, k8sClient client.Client, devbox *devboxv1alpha2.Devbox) error {
 	// Get the latest version of the object
 	key := types.NamespacedName{
 		Namespace: devbox.Namespace,
 		Name:      devbox.Name,
 	}
 
-	latest := &devboxv1alpha1.Devbox{}
+	latest := &devboxv1alpha2.Devbox{}
 	if err := k8sClient.Get(ctx, key, latest); err != nil {
 		return fmt.Errorf("failed to get latest Devbox: %w", err)
 	}
@@ -285,7 +262,7 @@ func forceStorageVersionUpdate(ctx context.Context, k8sClient client.Client, dev
 		latest.Annotations = make(map[string]string)
 	}
 	latest.Annotations["devbox.sealos.io/storage-upgrade"] = fmt.Sprintf("transform-%s-%d", latest.Name, time.Now().Unix())
-
+	latest.Spec.RuntimeClassName = "devbox-runtime"
 	if err := k8sClient.Update(ctx, latest); err != nil {
 		return fmt.Errorf("failed to update Devbox: %w", err)
 	}
@@ -293,14 +270,14 @@ func forceStorageVersionUpdate(ctx context.Context, k8sClient client.Client, dev
 	return nil
 }
 
-func forceStorageVersionUpdateRelease(ctx context.Context, k8sClient client.Client, devboxRelease *devboxv1alpha1.DevBoxRelease) error {
+func forceStorageVersionUpdateRelease(ctx context.Context, k8sClient client.Client, devboxRelease *devboxv1alpha2.DevBoxRelease) error {
 	// Get the latest version of the object
 	key := types.NamespacedName{
 		Namespace: devboxRelease.Namespace,
 		Name:      devboxRelease.Name,
 	}
 
-	latest := &devboxv1alpha1.DevBoxRelease{}
+	latest := &devboxv1alpha2.DevBoxRelease{}
 	if err := k8sClient.Get(ctx, key, latest); err != nil {
 		return fmt.Errorf("failed to get latest DevboxRelease: %w", err)
 	}
@@ -311,7 +288,6 @@ func forceStorageVersionUpdateRelease(ctx context.Context, k8sClient client.Clie
 		latest.Annotations = make(map[string]string)
 	}
 	latest.Annotations["devbox.sealos.io/storage-upgrade"] = fmt.Sprintf("transform-%s-%d", latest.Name, time.Now().Unix())
-
 	if err := k8sClient.Update(ctx, latest); err != nil {
 		return fmt.Errorf("failed to update DevboxRelease: %w", err)
 	}

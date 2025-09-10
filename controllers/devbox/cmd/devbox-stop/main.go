@@ -158,7 +158,7 @@ func stopAllDevboxes(ctx context.Context, k8sClient client.Client, config Devbox
 		// 添加升级开始的annotation
 		upgradeInfo := upgrade.UpgradeInfo{
 			OperationID:   operationID,
-			Step:          upgrade.UpgradeStepPause,
+			Step:          upgrade.UpgradeStepStop,
 			Status:        upgrade.UpgradeStatusInProgress,
 			Version:       "v1alpha1-to-v1alpha2",
 			OriginalState: string(devbox.Spec.State),
@@ -176,14 +176,14 @@ func stopAllDevboxes(ctx context.Context, k8sClient client.Client, config Devbox
 			devbox.Spec.State = devboxv1alpha1.DevboxStateStopped
 			if err := k8sClient.Update(ctx, devbox); err != nil {
 				// 标记为失败
-				if updateErr := upgrade.UpdateUpgradeAnnotation(ctx, k8sClient, devbox, upgrade.AnnotationUpgradeStatus, upgrade.UpgradeStatusFailed); updateErr != nil {
+				if updateErr := upgrade.UpdateUpgradeAnnotationv1alpha1(ctx, k8sClient, devbox, upgrade.AnnotationUpgradeStatus, upgrade.UpgradeStatusFailed); updateErr != nil {
 					setupLog.Error(updateErr, "Failed to update upgrade status annotation")
 				}
 				return fmt.Errorf("failed to stop devbox %s/%s: %w", devbox.Namespace, devbox.Name, err)
 			}
 
 			// 标记停止完成
-			if err := upgrade.UpdateUpgradeAnnotation(ctx, k8sClient, devbox, upgrade.AnnotationUpgradeStatus, upgrade.UpgradeStatusPaused); err != nil {
+			if err := upgrade.UpdateUpgradeAnnotationv1alpha1(ctx, k8sClient, devbox, upgrade.AnnotationUpgradeStatus, upgrade.UpgradeStatusStopped); err != nil {
 				setupLog.Error(err, "Failed to update upgrade status annotation")
 			}
 
@@ -193,7 +193,7 @@ func stopAllDevboxes(ctx context.Context, k8sClient client.Client, config Devbox
 				"operation-id", operationID)
 		} else {
 			// 如果不需要停止，直接标记为已处理
-			if err := upgrade.UpdateUpgradeAnnotation(ctx, k8sClient, devbox, upgrade.AnnotationUpgradeStatus, upgrade.UpgradeStatusPaused); err != nil {
+			if err := upgrade.UpdateUpgradeAnnotationv1alpha1(ctx, k8sClient, devbox, upgrade.AnnotationUpgradeStatus, upgrade.UpgradeStatusStopped); err != nil {
 				setupLog.Error(err, "Failed to update upgrade status annotation")
 			}
 		}

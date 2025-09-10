@@ -3,6 +3,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.18.0
+    cert-manager.io/inject-ca-from: devbox-system/devbox-serving-cert
   name: devboxes.devbox.sealos.io
 spec:
   conversion:
@@ -3416,7 +3417,7 @@ spec:
             type: object
         type: object
     served: true
-    storage: true
+    storage: false
     subresources:
       status: {}
   - additionalPrinterColumns:
@@ -7088,4 +7089,3 @@ spec:
     storage: true
     subresources:
       status: {}
----
