@@ -1,7 +1,8 @@
 package events
 
 const (
-	EventReasonLVCleanupRequested = "LV cleanup requested"
+	EventReasonStorageCleanupRequested = "Storage cleanup requested" // Storage cleanup events
+	EventReasonDevboxStateChanged      = "Devbox state changed"      // Devbox state changed events
 
-	EventMessageLVCleanupFormat = "devboxName=%s, contentID=%s, baseImage=%s"
+	EventMessageStorageCleanupFormat = "devboxName=%s, contentID=%s, baseImage=%s"
 )

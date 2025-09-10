@@ -50,29 +50,23 @@ func (h *StateChangeHandler) Handle(ctx context.Context, event *corev1.Event) er
 		return nil
 	}
 
-	// clean lv if devbox is deleted
-	if event.Reason == events.EventReasonLVCleanupRequested {
-		h.Logger.Info("LV cleanup event detected", "event", event.Name, "message", event.Message)
-		if err := h.deleteDevbox(ctx, event); err != nil {
-			h.Logger.Error(err, "failed to clean up LV during delete devbox", "devbox", event.Name)
-			h.Recorder.Eventf(&corev1.ObjectReference{
-				Kind:      event.InvolvedObject.Kind,
-				Name:      event.InvolvedObject.Name,
-				Namespace: event.InvolvedObject.Namespace,
-			}, corev1.EventTypeWarning, "LV cleanup failed",
-				"Failed to cleanup LV: %v", err)
-		} else {
-			h.Logger.Info("Successfully cleaned up LV during deletion", "devbox", event.Name)
-			h.Recorder.Eventf(&corev1.ObjectReference{
-				Kind:      event.InvolvedObject.Kind,
-				Name:      event.InvolvedObject.Name,
-				Namespace: event.InvolvedObject.Namespace,
-			}, corev1.EventTypeNormal, "LV cleanup succeeded",
-				"Successfully cleaned up LV for devbox %s", event.Name)
-		}
-		return nil
-	}
+	switch event.Reason {
+	// handle storage cleanup
+	case events.EventReasonStorageCleanupRequested:
+		return h.handleStorageCleanup(ctx, event)
 
+	// handle state change
+	case events.EventReasonDevboxStateChanged:
+		return h.handleDevboxStateChange(ctx, event)
+
+	default:
+		return fmt.Errorf("invalid event: %v", event)
+	}
+}
+
+// handleDevboxStateChange handle new structured state change event
+func (h *StateChangeHandler) handleDevboxStateChange(ctx context.Context, event *corev1.Event) error {
+	h.Logger.Info("Devbox state change event detected", "event", event.Name, "message", event.Message)
 	devbox := &devboxv1alpha2.Devbox{}
 	if err := h.Client.Get(ctx, types.NamespacedName{Namespace: event.Namespace, Name: event.InvolvedObject.Name}, devbox); err != nil {
 		h.Logger.Error(err, "failed to get devbox", "devbox", event.InvolvedObject.Name)
@@ -114,6 +108,28 @@ func (h *StateChangeHandler) Handle(ctx context.Context, event *corev1.Event) er
 			h.Logger.Error(err, "failed to update devbox status", "devbox", devbox.Name)
 			return err
 		}
+	}
+	return nil
+}
+
+func (h *StateChangeHandler) handleStorageCleanup(ctx context.Context, event *corev1.Event) error {
+	h.Logger.Info("Storage cleanup event detected", "event", event.Name, "message", event.Message)
+	if err := h.removeStorage(ctx, event); err != nil {
+		h.Logger.Error(err, "failed to clean up storage during delete devbox", "devbox", event.Name)
+		h.Recorder.Eventf(&corev1.ObjectReference{
+			Kind:      event.InvolvedObject.Kind,
+			Name:      event.InvolvedObject.Name,
+			Namespace: event.InvolvedObject.Namespace,
+		}, corev1.EventTypeWarning, "Storage cleanup failed",
+			"Failed to cleanup Storage: %v", err)
+	} else {
+		h.Logger.Info("Successfully cleaned up storage during deletion", "devbox", event.Name)
+		h.Recorder.Eventf(&corev1.ObjectReference{
+			Kind:      event.InvolvedObject.Kind,
+			Name:      event.InvolvedObject.Name,
+			Namespace: event.InvolvedObject.Namespace,
+		}, corev1.EventTypeNormal, "Storage cleanup succeeded",
+			"Successfully cleaned up storage for devbox %s", event.Name)
 	}
 	return nil
 }
@@ -202,9 +218,9 @@ func (h *StateChangeHandler) commitDevbox(ctx context.Context, devbox *devboxv1a
 		h.Logger.Error(err, "failed to update devbox status", "devbox", devbox.Name)
 		return err
 	}
-	// step 5: set lv removable
+	// step 5: set LV removable
 	if err := h.Committer.SetLvRemovable(ctx, containerID, oldContentID); err != nil {
-		h.Logger.Error(err, "failed to set lv removable", "containerID", containerID, "contentID", oldContentID)
+		h.Logger.Error(err, "failed to set LV removable", "containerID", containerID, "contentID", oldContentID)
 	}
 	return nil
 }
@@ -214,11 +230,11 @@ func (h *StateChangeHandler) generateImageName(devbox *devboxv1alpha2.Devbox) st
 	return fmt.Sprintf("%s/%s/%s:%s-%s", h.CommitImageRegistry, devbox.Namespace, devbox.Name, rand.String(5), now.Format("2006-01-02-150405"))
 }
 
-func (h *StateChangeHandler) deleteDevbox(ctx context.Context, event *corev1.Event) error {
-	h.Logger.Info("Starting devbox deletion LV cleanup", "devbox", event.Name, "message", event.Message)
-	devboxName, contentID, baseImage, err := h.parseLVCleanupMessage(event.Message)
+func (h *StateChangeHandler) removeStorage(ctx context.Context, event *corev1.Event) error {
+	h.Logger.Info("Starting devbox deletion Storage cleanup", "devbox", event.Name, "message", event.Message)
+	devboxName, contentID, baseImage, err := h.parseStorageCleanupMessage(event.Message)
 	if err != nil {
-		h.Logger.Error(err, "failed to parse LV cleanup message", "event", event)
+		h.Logger.Error(err, "failed to parse Storage cleanup message", "event", event)
 		return err
 	}
 
@@ -226,11 +242,11 @@ func (h *StateChangeHandler) deleteDevbox(ctx context.Context, event *corev1.Eve
 	const retryDelay = 2 * time.Second
 
 	for i := 0; i < maxRetries; i++ {
-		if err := h.cleanupLV(ctx, devboxName, contentID, baseImage); err == nil {
-			h.Logger.Info("Successfully completed LV cleanup", "devbox", devboxName, "attempt", i+1)
+		if err := h.cleanupStorage(ctx, devboxName, contentID, baseImage); err == nil {
+			h.Logger.Info("Successfully completed Storage cleanup", "devbox", devboxName, "attempt", i+1)
 			return nil
 		} else {
-			h.Logger.Error(err, "LV cleanup failed, retrying...", "devbox", devboxName, "attempt", i+1, "maxRetries", maxRetries)
+			h.Logger.Error(err, "Storage cleanup failed, retrying...", "devbox", devboxName, "attempt", i+1, "maxRetries", maxRetries)
 
 			if i < maxRetries-1 {
 				time.Sleep(retryDelay)
@@ -238,11 +254,11 @@ func (h *StateChangeHandler) deleteDevbox(ctx context.Context, event *corev1.Eve
 		}
 	}
 
-	return fmt.Errorf("failed to cleanup LV after %d attempts", maxRetries)
+	return fmt.Errorf("failed to cleanup Storage after %d attempts", maxRetries)
 }
 
-func (h *StateChangeHandler) cleanupLV(ctx context.Context, devboxName, contentID, baseImage string) error {
-	h.Logger.Info("Starting LV cleanup", "devbox", devboxName, "contentID", contentID, "baseImage", baseImage)
+func (h *StateChangeHandler) cleanupStorage(ctx context.Context, devboxName, contentID, baseImage string) error {
+	h.Logger.Info("Starting Storage cleanup", "devbox", devboxName, "contentID", contentID, "baseImage", baseImage)
 
 	// create temp container
 	containerID, err := h.Committer.CreateContainer(ctx, fmt.Sprintf("temp-%s-%d", devboxName, time.Now().UnixMicro()), contentID, baseImage)
@@ -260,19 +276,19 @@ func (h *StateChangeHandler) cleanupLV(ctx context.Context, devboxName, contentI
 		}
 	}()
 
-	// remove lv
+	// remove storage
 	if err := h.Committer.SetLvRemovable(ctx, containerID, contentID); err != nil {
-		h.Logger.Error(err, "failed to set LV removable", "devbox", devboxName, "containerID", containerID, "contentID", contentID)
-		return fmt.Errorf("failed to set LV removable: %w", err)
+		h.Logger.Error(err, "failed to set Storage removable", "devbox", devboxName, "containerID", containerID, "contentID", contentID)
+		return fmt.Errorf("failed to set Storage removable: %w", err)
 	}
 
-	h.Logger.Info("Successfully completed LV cleanup", "devbox", devboxName, "containerID", containerID, "contentID", contentID)
+	h.Logger.Info("Successfully completed Storage cleanup", "devbox", devboxName, "containerID", containerID, "contentID", contentID)
 
 	return nil
 }
 
-// parseLVCleanupMessage parses the message from the event and returns the devboxName, contentID, and baseImage
-func (h *StateChangeHandler) parseLVCleanupMessage(message string) (devboxName, contentID, baseImage string, err error) {
+// parseStorageCleanupMessage parses the message from the event and returns the devboxName, contentID, and baseImage
+func (h *StateChangeHandler) parseStorageCleanupMessage(message string) (devboxName, contentID, baseImage string, err error) {
 	parts := strings.Split(message, ", ")
 	if len(parts) != 3 {
 		return "", "", "", fmt.Errorf("invalid message format: %s", message)
