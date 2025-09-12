@@ -1,17 +1,21 @@
 package helper
 
 const (
-	DefaultContainerFSAvailableThreshold = 10.0
-	DefaultCPURequestRatio               = 1.0
-	DefaultCPULimitRatio                 = 2.0
-	DefaultMemoryRequestRatio            = 1.0
-	DefaultMemoryLimitRatio              = 2.0
+	DefaultContainerFSAvailableThreshold         = 10.0
+	DefaultContainerFSMetadataAvailableThreshold = 15.0
+	DefaultCPURequestRatio                       = 1.0
+	DefaultCPULimitRatio                         = 2.0
+	DefaultMemoryRequestRatio                    = 1.0
+	DefaultMemoryLimitRatio                      = 2.0
 )
 
 type AcceptanceConsideration struct {
 	// The percentage of available bytes required to consider the node suitable for scheduling devbox.
 	// Default is 10.0, which means the node must have at least 10% of available bytes in the container filesystem.
 	ContainerFSAvailableThreshold float64
+	// The percentage of available bytes required to consider the node suitable for scheduling devbox.
+	// Default is 15.0, which means the node must have at least 15% of available bytes in the container filesystem metadata.
+	ContainerFSMetadataAvailableThreshold float64
 	// The ratio of expected overcommitment (total cpu request / available cpu) of CPU request.
 	// Default is 1.0, which means the CPU request cannot be overcommited by more than 100%.
 	CPURequestRatio float64

@@ -51,9 +51,8 @@ import (
 	"github.com/labring/sealos/controllers/devbox/internal/controller"
 	"github.com/labring/sealos/controllers/devbox/internal/controller/utils/matcher"
 	"github.com/labring/sealos/controllers/devbox/internal/controller/utils/nodes"
-	"github.com/labring/sealos/controllers/devbox/internal/controller/utils/registry"
 	utilresource "github.com/labring/sealos/controllers/devbox/internal/controller/utils/resource"
-	"github.com/labring/sealos/controllers/devbox/internal/stat"
+	storageclient "github.com/labring/sealos/controllers/devbox/stat/storage/client"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -250,6 +249,12 @@ func main() {
 
 	stateChangeBroadcaster := record.NewBroadcaster()
 
+	storageClient, err := storageclient.NewStorageClient(storageclient.DefaultStorageClientConfig())
+	if err != nil {
+		setupLog.Error(err, "unable to create storage client")
+		os.Exit(1)
+	}
+
 	if err = (&controller.DevboxReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
@@ -272,7 +277,7 @@ func main() {
 		RestartPredicateDuration: restartPredicateDuration,
 		NodeName:                 nodes.GetNodeName(),
 		AcceptanceThreshold:      acceptanceThreshold,
-		NodeStatsProvider:        &stat.NodeStatsProviderImpl{},
+		StorageClient:            storageClient,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Devbox")
 		os.Exit(1)
@@ -313,20 +318,21 @@ func main() {
 	})
 	defer watcher.Stop()
 
-	if err = (&controller.DevboxreleaseReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-		Registry: registry.Registry{
-			Host: registryAddr,
-			BasicAuth: registry.BasicAuth{
-				Username: registryUser,
-				Password: registryPassword,
-			},
-		},
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Devboxrelease")
-		os.Exit(1)
-	}
+	// DevBoxRelease controller is disabled
+	// if err = (&controller.DevboxreleaseReconciler{
+	// 	Client: mgr.GetClient(),
+	// 	Scheme: mgr.GetScheme(),
+	// 	Registry: registry.Registry{
+	// 		Host: registryAddr,
+	// 		BasicAuth: registry.BasicAuth{
+	// 			Username: registryUser,
+	// 			Password: registryPassword,
+	// 		},
+	// 	},
+	// }).SetupWithManager(mgr); err != nil {
+	// 	setupLog.Error(err, "unable to create controller", "controller", "Devboxrelease")
+	// 	os.Exit(1)
+	// }
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

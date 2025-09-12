@@ -23,16 +23,16 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
 	devboxv1alpha2 "github.com/labring/sealos/controllers/devbox/api/v1alpha2"
 	"github.com/labring/sealos/controllers/devbox/internal/commit"
 	"github.com/labring/sealos/controllers/devbox/internal/controller/helper"
 	"github.com/labring/sealos/controllers/devbox/internal/controller/utils/events"
 	"github.com/labring/sealos/controllers/devbox/internal/controller/utils/matcher"
 	"github.com/labring/sealos/controllers/devbox/internal/controller/utils/resource"
-	"github.com/labring/sealos/controllers/devbox/internal/stat"
 	"github.com/labring/sealos/controllers/devbox/label"
-
-	"github.com/google/uuid"
+	proto "github.com/labring/sealos/controllers/devbox/stat/proto"
+	storageclient "github.com/labring/sealos/controllers/devbox/stat/storage/client"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -73,7 +73,7 @@ type DevboxReconciler struct {
 
 	RestartPredicateDuration time.Duration
 	AcceptanceThreshold      int
-	stat.NodeStatsProvider
+	StorageClient            *storageclient.StorageClient
 }
 
 // +kubebuilder:rbac:groups=devbox.sealos.io,resources=devboxes,verbs=get;list;watch;create;update;patch;delete
@@ -820,6 +820,12 @@ func (r *DevboxReconciler) getAcceptanceConsideration(ctx context.Context) (help
 	} else {
 		ac.ContainerFSAvailableThreshold = v
 	}
+	if v, err := strconv.ParseFloat(ann[devboxv1alpha2.AnnotationContainerFSMetadataAvailableThreshold], 64); err != nil {
+		logger.Info("failed to parse containerfs metadata available threshold. use default value instead", "value", ann[devboxv1alpha2.AnnotationContainerFSMetadataAvailableThreshold])
+		ac.ContainerFSMetadataAvailableThreshold = helper.DefaultContainerFSMetadataAvailableThreshold
+	} else {
+		ac.ContainerFSMetadataAvailableThreshold = v
+	}
 	if v, err := strconv.ParseFloat(ann[devboxv1alpha2.AnnotationCPURequestRatio], 64); err != nil {
 		logger.Info("failed to parse CPU request ratio. use default value instead", "value", ann[devboxv1alpha2.AnnotationCPURequestRatio])
 		ac.CPURequestRatio = helper.DefaultCPURequestRatio
@@ -851,7 +857,8 @@ func (r *DevboxReconciler) getAcceptanceScore(ctx context.Context, devbox *devbo
 	logger := log.FromContext(ctx)
 	var (
 		ac                  helper.AcceptanceConsideration
-		containerFsStats    stat.FsStats
+		storageStats        *proto.StorageStatsProto
+		storageMetadata     *proto.StorageMetadataProto
 		err                 error
 		availableBytes      uint64
 		availablePercentage float64
@@ -869,19 +876,19 @@ func (r *DevboxReconciler) getAcceptanceScore(ctx context.Context, devbox *devbo
 		logger.Error(err, "failed to get acceptance consideration")
 		goto unsuitable // If we can't get the acceptance consideration, we assume the node is not suitable
 	}
-	containerFsStats, err = r.ContainerFsStats(ctx)
+	storageStats, err = r.StorageClient.GetStorageStats(ctx)
 	if err != nil {
 		logger.Error(err, "failed to get container filesystem stats")
 		goto unsuitable // If we can't get the container filesystem stats, we assume the node is not suitable
-	} else if containerFsStats.AvailableBytes == nil {
+	} else if storageStats.AvailableBytes == 0 {
 		logger.Info("available bytes is nil, assume the node is not suitable")
 		goto unsuitable // If we can't get the available bytes, we assume the node is not suitable
-	} else if containerFsStats.CapacityBytes == nil {
+	} else if storageStats.CapacityBytes == 0 {
 		logger.Info("capacity bytes is nil, assume the node is not suitable")
 		goto unsuitable // If we can't get the capacity bytes, we assume the node is not suitable
 	}
-	availableBytes = *containerFsStats.AvailableBytes
-	capacityBytes = *containerFsStats.CapacityBytes
+	availableBytes = storageStats.AvailableBytes
+	capacityBytes = storageStats.CapacityBytes
 	if storageLimitBytes, err = helper.GetStorageLimitInBytes(devbox); err != nil {
 		logger.Error(err, "failed to get storage limit")
 		goto unsuitable // If we can't get the storage limit, we assume the node is not suitable
@@ -889,6 +896,7 @@ func (r *DevboxReconciler) getAcceptanceScore(ctx context.Context, devbox *devbo
 		logger.Info("available bytes less than storage limit", "availableBytes", availableBytes, "storageLimitBytes", storageLimitBytes)
 		goto unsuitable // If available bytes are less than the storage limit, we assume the node is not suitable
 	}
+
 	availablePercentage = float64(availableBytes) / float64(capacityBytes) * 100
 	if availablePercentage > ac.ContainerFSAvailableThreshold {
 		logger.Info("container filesystem available percentage is greater than threshold",
@@ -896,6 +904,20 @@ func (r *DevboxReconciler) getAcceptanceScore(ctx context.Context, devbox *devbo
 			"threshold", ac.ContainerFSAvailableThreshold)
 		score += getScoreUnit(1)
 	}
+
+	storageMetadata, err = r.StorageClient.GetStorageMetadata(ctx)
+	if err != nil {
+		logger.Error(err, "failed to get container filesystem metadata")
+		goto unsuitable // If we can't get the container filesystem metadata, we assume the node is not suitable
+	}
+	availablePercentage = float64(storageMetadata.MetadataAvailableBytes) / float64(storageMetadata.MetadataCapacityBytes) * 100
+	if availablePercentage > ac.ContainerFSMetadataAvailableThreshold {
+		logger.Info("container filesystem metadata available percentage is greater than threshold",
+			"availablePercentage", availablePercentage,
+			"threshold", ac.ContainerFSMetadataAvailableThreshold)
+		score += getScoreUnit(1)
+	}
+
 	cpuRequestRatio, err = r.getTotalCPURequestRatio(ctx)
 	if err != nil {
 		logger.Error(err, "failed to get total CPU request")
