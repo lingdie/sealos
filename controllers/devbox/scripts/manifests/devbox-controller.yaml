@@ -354,7 +354,7 @@ spec:
         - --registry-password=passw0rd
         command:
         - /manager
-        image: ghcr.io/lingdie/sealos-devbox-controller:v4.0.0
+        image: ghcr.io/lingdie/sealos-devbox-controller:v4.1.0
         env:
         - name: NODE_NAME
           valueFrom:
