@@ -121,6 +121,9 @@ spec:
                 type: string
               version:
                 type: string
+              startDevboxAfterRelease:
+                default: false
+                type: boolean
             required:
             - devboxName
             - version
