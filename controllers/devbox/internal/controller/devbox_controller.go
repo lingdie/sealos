@@ -24,7 +24,6 @@ import (
 	"time"
 
 	devboxv1alpha2 "github.com/labring/sealos/controllers/devbox/api/v1alpha2"
-	"github.com/labring/sealos/controllers/devbox/internal/commit"
 	"github.com/labring/sealos/controllers/devbox/internal/controller/helper"
 	"github.com/labring/sealos/controllers/devbox/internal/controller/utils/events"
 	"github.com/labring/sealos/controllers/devbox/internal/controller/utils/matcher"
@@ -326,7 +325,7 @@ func (r *DevboxReconciler) syncPod(ctx context.Context, devbox *devboxv1alpha2.D
 				helper.WithPodImage(currentRecord.BaseImage),
 				helper.WithPodContentID(devbox.Status.ContentID),
 				helper.WithPodNodeName(currentRecord.Node),
-				helper.WithPodInit(commit.AnnotationImageFromValue),
+				// helper.WithPodInit(commit.AnnotationImageFromValue),	// Don't need to remove base image top layer
 			)
 			if err := r.Create(ctx, pod); err != nil {
 				return err

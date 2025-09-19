@@ -129,8 +129,9 @@ func (c *CommitterImpl) CreateContainer(ctx context.Context, devboxName string, 
 
 	// create container with labels
 	originalAnnotations := map[string]string{
-		v1alpha2.AnnotationContentID:    contentID,
-		v1alpha2.AnnotationInit:         AnnotationImageFromValue,
+		v1alpha2.AnnotationContentID: contentID,
+		// Don't need to copy top layer from base image
+		// v1alpha2.AnnotationInit:         AnnotationImageFromValue,
 		v1alpha2.AnnotationStorageLimit: AnnotationUseLimitValue,
 		AnnotationKeyNamespace:          DefaultNamespace,
 		AnnotationKeyImageName:          baseImage,
@@ -299,9 +300,10 @@ func (c *CommitterImpl) Commit(ctx context.Context, devboxName string, contentID
 		Stdout:   io.Discard,
 		GOptions: *global,
 		Pause:    PauseContainerDuringCommit,
-		DevboxOptions: types.DevboxOptions{
-			RemoveBaseImageTopLayer: DevboxOptionsRemoveBaseImageTopLayer,
-		},
+		// Don't need to remove base image top layer:
+		// DevboxOptions: types.DevboxOptions{
+		// 	RemoveBaseImageTopLayer: DevboxOptionsRemoveBaseImageTopLayer,
+		// },
 	}
 
 	// commit container
