@@ -345,16 +345,26 @@ spec:
     spec:
       nodeSelector:
         devbox.sealos.io/node: ""
+      tolerations:
+      - effect: NoSchedule
+        key: devbox.sealos.io/node
+        operator: Exists
+      - effect: NoExecute
+        key: node.kubernetes.io/not-ready
+        operator: Exists
+      - effect: NoExecute
+        key: node.kubernetes.io/unreachable
+        operator: Exists
       containers:
       - args:
         - --metrics-bind-address=:8443
         - --health-probe-bind-address=:8081
-        - --registry-addr=sealos.hub:5000
+        - --registry-addr=
         - --registry-user=admin
-        - --registry-password=passw0rd
+        - --registry-password=
         command:
         - /manager
-        image: ghcr.io/lingdie/sealos-devbox-controller:v5.0.0
+        image: ghcr.io/lingdie/sealos-devbox-controller:v5.0.1
         env:
         - name: NODE_NAME
           valueFrom:

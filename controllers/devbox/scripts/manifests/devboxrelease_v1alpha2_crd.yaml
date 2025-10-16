@@ -7,6 +7,16 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.18.0
   name: devboxreleases.devbox.sealos.io
 spec:
+  conversion:
+    strategy: Webhook
+    webhook:
+      clientConfig:
+        service:
+          name: devbox-webhook-service
+          namespace: devbox-system
+          path: /convert
+      conversionReviewVersions:
+      - v1
   group: devbox.sealos.io
   names:
     kind: DevBoxRelease
