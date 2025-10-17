@@ -386,6 +386,9 @@ func forceStorageVersionUpdateRelease(ctx context.Context, k8sClient client.Clie
 		latest.Annotations = make(map[string]string)
 	}
 	latest.Annotations["devbox.sealos.io/storage-upgrade"] = fmt.Sprintf("transform-%s-%d", latest.Name, time.Now().Unix())
+	for i := range latest.OwnerReferences {
+		latest.OwnerReferences[i].APIVersion = "devbox.sealos.io/v1alpha2"
+	}
 	if err := k8sClient.Update(ctx, latest); err != nil {
 		return fmt.Errorf("failed to update DevboxRelease: %w", err)
 	}

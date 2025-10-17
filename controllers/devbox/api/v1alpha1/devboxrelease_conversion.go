@@ -1,6 +1,8 @@
 package v1alpha1
 
 import (
+	"log"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/conversion"
 
@@ -11,6 +13,8 @@ import (
 func (src *DevBoxRelease) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*devboxv1alpha2.DevBoxRelease)
 
+	log.Printf("ConvertTo: Converting DevBoxRelease from Spoke version v1alpha1 to Hub version v1alpha2;"+
+		"source: %s/%s, target: %s/%s", src.Namespace, src.Name, dst.Namespace, dst.Name)
 	// Copy ObjectMeta to preserve name, namespace, labels, etc.
 	dst.ObjectMeta = src.ObjectMeta
 
@@ -19,9 +23,10 @@ func (src *DevBoxRelease) ConvertTo(dstRaw conversion.Hub) error {
 		APIVersion: "devbox.sealos.io/v1alpha2",
 		Kind:       "DevBoxRelease",
 	}
-	dst.OwnerReferences = make([]metav1.OwnerReference, len(src.OwnerReferences))
-	copy(dst.OwnerReferences, src.OwnerReferences)
+	// Copy OwnerReferences to the target version: v1alpha2
+	dst.OwnerReferences = src.OwnerReferences
 	for i := range dst.OwnerReferences {
+		// Update the API version to the target version: v1alpha2
 		dst.OwnerReferences[i].APIVersion = "devbox.sealos.io/v1alpha2"
 	}
 
@@ -39,6 +44,9 @@ func (src *DevBoxRelease) ConvertTo(dstRaw conversion.Hub) error {
 func (dst *DevBoxRelease) ConvertFrom(srcRaw conversion.Hub) error {
 	src := srcRaw.(*devboxv1alpha2.DevBoxRelease)
 
+	log.Printf("ConvertFrom: Converting DevBoxRelease from Hub version v1alpha2 to Spoke version v1alpha1;"+
+		"source: %s/%s, target: %s/%s", src.Namespace, src.Name, dst.Namespace, dst.Name)
+
 	// Copy ObjectMeta to preserve name, namespace, labels, etc.
 	dst.ObjectMeta = src.ObjectMeta
 
@@ -47,9 +55,10 @@ func (dst *DevBoxRelease) ConvertFrom(srcRaw conversion.Hub) error {
 		APIVersion: "devbox.sealos.io/v1alpha1",
 		Kind:       "DevBoxRelease",
 	}
-	dst.OwnerReferences = make([]metav1.OwnerReference, len(src.OwnerReferences))
-	copy(dst.OwnerReferences, src.OwnerReferences)
+	// Copy OwnerReferences to the target version: v1alpha1
+	dst.OwnerReferences = src.OwnerReferences
 	for i := range dst.OwnerReferences {
+		// Update the API version to the target version: v1alpha1
 		dst.OwnerReferences[i].APIVersion = "devbox.sealos.io/v1alpha1"
 	}
 
