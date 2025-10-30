@@ -64,6 +64,7 @@ type RestoreConfig struct {
 	OperationID      string
 	OnlyStates       bool
 	Force            bool
+	BatchSize        int // 每次恢复的最大数量，0 表示不限制
 }
 
 func main() {
@@ -74,6 +75,7 @@ func main() {
 	flag.StringVar(&config.OperationID, "operation-id", "", "Specific operation ID to restore (empty for latest)")
 	flag.BoolVar(&config.OnlyStates, "only-states", false, "Only restore devbox states, not full resources")
 	flag.BoolVar(&config.Force, "force", false, "Force restore even if devbox has been modified")
+	flag.IntVar(&config.BatchSize, "batch-size", 0, "Maximum number of devboxes to restore per run (0 = no limit)")
 
 	opts := zap.Options{
 		Development: true,
@@ -102,7 +104,8 @@ func main() {
 		"backup-states-file", config.BackupStatesFile,
 		"operation-id", config.OperationID,
 		"only-states", config.OnlyStates,
-		"force", config.Force)
+		"force", config.Force,
+		"batch-size", config.BatchSize)
 
 	if err := performRestore(ctx, k8sClient, config); err != nil {
 		setupLog.Error(err, "restore process failed")
@@ -136,28 +139,94 @@ func performRestore(ctx context.Context, k8sClient client.Client, config Restore
 		targetStates = backupStates
 	}
 
-	setupLog.Info("Restoring devbox states", "count", len(targetStates))
-
-	// 恢复devbox状态
+	// 筛选出需要恢复的 devbox（状态不匹配的）
+	var devboxesToRestore []DevboxBackupState
 	for _, state := range targetStates {
-		if err := restoreDevboxState(ctx, k8sClient, state, config); err != nil {
-			setupLog.Error(err, "Failed to restore devbox state",
+		needsRestore, err := needsRestoreCheck(ctx, k8sClient, state, config)
+		if err != nil {
+			setupLog.Error(err, "Failed to check if devbox needs restore",
 				"name", state.Name,
 				"namespace", state.Namespace)
 			if !config.Force {
 				return err
 			}
+			continue
+		}
+		if needsRestore {
+			devboxesToRestore = append(devboxesToRestore, state)
 		}
 	}
 
+	setupLog.Info("Found devboxes needing restore",
+		"total", len(targetStates),
+		"needs-restore", len(devboxesToRestore))
+
+	// 应用批量限制
+	restoreCount := len(devboxesToRestore)
+	if config.BatchSize > 0 && restoreCount > config.BatchSize {
+		restoreCount = config.BatchSize
+		setupLog.Info("Applying batch size limit",
+			"batch-size", config.BatchSize,
+			"remaining", len(devboxesToRestore)-config.BatchSize)
+	}
+
+	if restoreCount == 0 {
+		setupLog.Info("No devboxes need to be restored")
+		return nil
+	}
+
+	// 恢复devbox状态（只处理批量限制内的数量）
+	successCount := 0
+	failCount := 0
+	for i := 0; i < restoreCount; i++ {
+		state := devboxesToRestore[i]
+		if err := restoreDevboxState(ctx, k8sClient, state, config); err != nil {
+			setupLog.Error(err, "Failed to restore devbox state",
+				"name", state.Name,
+				"namespace", state.Namespace)
+			failCount++
+			if !config.Force {
+				return err
+			}
+		} else {
+			successCount++
+		}
+	}
+
+	setupLog.Info("Restore batch completed",
+		"restored", successCount,
+		"failed", failCount,
+		"remaining", len(devboxesToRestore)-restoreCount)
+
 	return nil
+}
+
+// needsRestoreCheck 检查 devbox 是否需要恢复（当前状态与备份状态不匹配）
+func needsRestoreCheck(ctx context.Context, k8sClient client.Client, state DevboxBackupState, config RestoreConfig) (bool, error) {
+	// 获取当前devbox
+	devbox := &devboxv1alpha2.Devbox{}
+	key := types.NamespacedName{Name: state.Name, Namespace: state.Namespace}
+	if err := k8sClient.Get(ctx, key, devbox); err != nil {
+		return false, fmt.Errorf("failed to get devbox %s/%s: %w", state.Namespace, state.Name, err)
+	}
+
+	// 检查状态是否匹配
+	if devbox.Spec.State == state.State {
+		setupLog.V(1).Info("Devbox state already matches backup, skipping",
+			"name", state.Name,
+			"namespace", state.Namespace,
+			"state", state.State)
+		return false, nil
+	}
+
+	return true, nil
 }
 
 func restoreDevboxState(ctx context.Context, k8sClient client.Client, state DevboxBackupState, config RestoreConfig) error {
 	setupLog.Info("Restoring devbox state",
 		"name", state.Name,
 		"namespace", state.Namespace,
-		"original-state", state.State,
+		"target-state", state.State,
 		"operation-id", state.OperationID)
 
 	if config.DryRun {
@@ -175,14 +244,7 @@ func restoreDevboxState(ctx context.Context, k8sClient client.Client, state Devb
 		return fmt.Errorf("failed to get devbox %s/%s: %w", state.Namespace, state.Name, err)
 	}
 
-	// 检查是否需要恢复
-	if devbox.Spec.State == state.State {
-		setupLog.Info("Devbox state already matches backup, skipping",
-			"name", state.Name,
-			"namespace", state.Namespace,
-			"state", state.State)
-		return nil
-	}
+	currentState := devbox.Spec.State
 
 	// 检查是否被修改过（如果不是强制模式）
 	if !config.Force {
@@ -206,9 +268,11 @@ func restoreDevboxState(ctx context.Context, k8sClient client.Client, state Devb
 		setupLog.Error(err, "Failed to add restore annotations")
 	}
 
+	// 重新获取最新版本
 	if err := k8sClient.Get(ctx, key, devbox); err != nil {
 		return fmt.Errorf("failed to get devbox %s/%s: %w", state.Namespace, state.Name, err)
 	}
+
 	// 恢复状态
 	devbox.Spec.State = state.State
 
@@ -219,7 +283,8 @@ func restoreDevboxState(ctx context.Context, k8sClient client.Client, state Devb
 	setupLog.Info("Successfully restored devbox state",
 		"name", state.Name,
 		"namespace", state.Namespace,
-		"restored-state", state.State,
+		"from-state", currentState,
+		"to-state", state.State,
 		"operation-id", state.OperationID)
 
 	return nil
