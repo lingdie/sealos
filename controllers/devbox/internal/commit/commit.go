@@ -563,7 +563,7 @@ func NewGlobalOptionConfig() *types.GlobalCommandOptions {
 	return &types.GlobalCommandOptions{
 		Namespace:        DefaultNamespace,
 		Address:          DefaultContainerdAddress,
-		DataRoot:         DefaultNerdctlDataRoot,
+		DataRoot:         ncdefaults.DataRoot(),
 		Debug:            false,
 		DebugFull:        false,
 		Snapshotter:      DefaultDevboxSnapshotter,
@@ -571,7 +571,7 @@ func NewGlobalOptionConfig() *types.GlobalCommandOptions {
 		CNINetConfPath:   ncdefaults.CNINetConfPath(),
 		CgroupManager:    ncdefaults.CgroupManager(),
 		InsecureRegistry: InsecureRegistry,
-		HostsDir:         []string{DefaultNerdctlHostsDir},
+		HostsDir:         ncdefaults.HostsDirs(),
 		Experimental:     true,
 		HostGatewayIP:    ncdefaults.HostGatewayIP(),
 		KubeHideDupe:     false,
