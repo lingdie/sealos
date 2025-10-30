@@ -571,7 +571,7 @@ func NewGlobalOptionConfig() *types.GlobalCommandOptions {
 		CNINetConfPath:   ncdefaults.CNINetConfPath(),
 		CgroupManager:    ncdefaults.CgroupManager(),
 		InsecureRegistry: InsecureRegistry,
-		HostsDir:         ncdefaults.HostsDirs(),
+		HostsDir:         []string{DefaultNerdctlHostsDir},
 		Experimental:     true,
 		HostGatewayIP:    ncdefaults.HostGatewayIP(),
 		KubeHideDupe:     false,
