@@ -341,6 +341,7 @@ func (r *DevboxReconciler) syncPod(ctx context.Context, devbox *devboxv1alpha2.D
 				helper.WithPodImage(currentRecord.BaseImage),
 				helper.WithPodContentID(devbox.Status.ContentID),
 				helper.WithPodNodeName(currentRecord.Node),
+				helper.WithPodRuntimeHandler(devboxv1alpha2.PodRuntimeHandler),
 			}
 			if r.MergeBaseImageTopLayer {
 				podOptions = append(podOptions, helper.WithPodInit(commit.AnnotationImageFromValue))
