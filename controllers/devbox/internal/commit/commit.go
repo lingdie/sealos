@@ -363,6 +363,9 @@ func (c *CommitterImpl) Push(ctx context.Context, imageName string) error {
 
 // RemoveImage remove image
 func (c *CommitterImpl) RemoveImage(ctx context.Context, imageNames []string, force bool, async bool) error {
+	if len(imageNames) == 0 {
+		return fmt.Errorf("[RemoveImage]imageNames is empty")
+	}
 	fmt.Println("========>>>> remove image", imageNames)
 	ctx = namespaces.WithNamespace(ctx, DefaultNamespace)
 
@@ -411,9 +414,11 @@ func (c *CommitterImpl) forceGC(ctx context.Context) error {
 	for _, container := range containers {
 		containerNames = append(containerNames, container.ID())
 	}
-	if err := c.RemoveContainer(ctx, containerNames); err != nil {
-		log.Printf("Failed to remove containers, err: %v", err)
-		return err
+	if len(containerNames) > 0 {
+		if err := c.RemoveContainer(ctx, containerNames); err != nil {
+			log.Printf("Failed to remove containers, err: %v", err)
+			return err
+		}
 	}
 
 	// gc image
@@ -426,10 +431,11 @@ func (c *CommitterImpl) forceGC(ctx context.Context) error {
 	for _, image := range images {
 		imageNames = append(imageNames, image.Name())
 	}
-
-	if err := c.RemoveImage(ctx, imageNames, false, true); err != nil {
-		log.Printf("Failed to remove images, err: %v", err)
-		return err
+	if len(imageNames) > 0 {
+		if err := c.RemoveImage(ctx, imageNames, false, true); err != nil {
+			log.Printf("Failed to remove images, err: %v", err)
+			return err
+		}
 	}
 	return nil
 }

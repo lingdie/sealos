@@ -201,6 +201,10 @@ func (h *EventHandler) commitDevbox(ctx context.Context, devbox *devboxv1alpha2.
 		if err := h.Committer.RemoveContainer(ctx, []string{containerID}); err != nil {
 			h.Logger.Error(err, "failed to remove container", "containerID", containerID)
 		}
+		// remove after push image whether push success
+		if err := h.Committer.RemoveImage(ctx, []string{commitImage, baseImage}, false, true); err != nil {
+			h.Logger.Error(err, "failed to remove image", "commitImage", commitImage)
+		}
 	}()
 	if containerID, commitErr = h.Committer.Commit(ctx, devbox.Name, devbox.Status.ContentID, baseImage, commitImage); commitErr != nil {
 		h.Logger.Error(commitErr, "failed to commit devbox", "devbox", devbox.Name)
@@ -239,10 +243,6 @@ func (h *EventHandler) commitDevbox(ctx context.Context, devbox *devboxv1alpha2.
 			h.Logger.Error(updateErr, "failed to update commit status to failed", "devbox", devbox.Name)
 		}
 		return err
-	}
-	// remove after push image whether push success
-	if err := h.Committer.RemoveImage(ctx, []string{commitImage, baseImage}, false, true); err != nil {
-		h.Logger.Error(err, "failed to remove image", "commitImage", commitImage)
 	}
 	// step 2: update devbox commit record
 	// step 3: update devbox status state to shutdown
