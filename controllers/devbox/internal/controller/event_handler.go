@@ -198,7 +198,7 @@ func (h *EventHandler) commitDevbox(ctx context.Context, devbox *devboxv1alpha2.
 	var commitErr error
 	defer func() {
 		// remove container whether commit success or not
-		if err := h.Committer.RemoveContainer(ctx, containerID); err != nil {
+		if err := h.Committer.RemoveContainer(ctx, []string{containerID}); err != nil {
 			h.Logger.Error(err, "failed to remove container", "containerID", containerID)
 		}
 	}()
@@ -241,7 +241,7 @@ func (h *EventHandler) commitDevbox(ctx context.Context, devbox *devboxv1alpha2.
 		return err
 	}
 	// remove after push image whether push success
-	if err := h.Committer.RemoveImage(ctx, commitImage, false, false); err != nil {
+	if err := h.Committer.RemoveImage(ctx, []string{commitImage, baseImage}, false, true); err != nil {
 		h.Logger.Error(err, "failed to remove image", "commitImage", commitImage)
 	}
 	// step 2: update devbox commit record
@@ -322,7 +322,7 @@ func (h *EventHandler) cleanupStorage(ctx context.Context, devboxName, contentID
 
 	// make sure remove container
 	defer func() {
-		if cleanupErr := h.Committer.RemoveContainer(ctx, containerID); cleanupErr != nil {
+		if cleanupErr := h.Committer.RemoveContainer(ctx, []string{containerID}); cleanupErr != nil {
 			h.Logger.Error(cleanupErr, "failed to remove temporary container", "devbox", devboxName, "containerID", containerID)
 		} else {
 			h.Logger.Info("Successfully removed temporary container", "devbox", devboxName, "containerID", containerID)

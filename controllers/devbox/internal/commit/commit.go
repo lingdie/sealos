@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/containerd/containerd/v2/client"
 	"github.com/containerd/containerd/v2/core/remotes"
 	"github.com/containerd/containerd/v2/core/remotes/docker"
 	"github.com/containerd/containerd/v2/core/remotes/docker/config"
@@ -19,12 +18,12 @@ import (
 	"github.com/containerd/nerdctl/v2/pkg/cmd/image"
 	"github.com/containerd/nerdctl/v2/pkg/cmd/login"
 	"github.com/containerd/nerdctl/v2/pkg/containerutil"
-	ncdefaults "github.com/containerd/nerdctl/v2/pkg/defaults"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	runtimeapi "k8s.io/cri-api/pkg/apis/runtime/v1"
 
+	containerd "github.com/containerd/containerd/v2/client"
+	ncdefaults "github.com/containerd/nerdctl/v2/pkg/defaults"
 	"github.com/labring/sealos/controllers/devbox/api/v1alpha2"
 )
 
@@ -32,27 +31,21 @@ type Committer interface {
 	CreateContainer(ctx context.Context, devboxName string, contentID string, baseImage string) (string, error)
 	Commit(ctx context.Context, devboxName string, contentID string, baseImage string, commitImage string) (string, error)
 	Push(ctx context.Context, imageName string) error
-	RemoveImage(ctx context.Context, imageName string, force bool, async bool) error
-	RemoveContainer(ctx context.Context, containerName string) error
+	RemoveImage(ctx context.Context, imageNames []string, force bool, async bool) error
+	RemoveContainer(ctx context.Context, containerNames []string) error
 	InitializeGC(ctx context.Context) error
-	GC(ctx context.Context) error
 	SetLvRemovable(ctx context.Context, containerID string, contentID string) error
 }
 
 type CommitterImpl struct {
-	runtimeServiceClient runtimeapi.RuntimeServiceClient // CRI client
-	containerdClient     *client.Client                  // containerd client
-	conn                 *grpc.ClientConn                // gRPC connection
-	globalOptions        *types.GlobalCommandOptions     // global options
-	registryAddr         string
-	registryUsername     string
-	registryPassword     string
+	containerdClient *containerd.Client          // containerd client
+	conn             *grpc.ClientConn            // gRPC connection
+	globalOptions    *types.GlobalCommandOptions // global options
+	registryAddr     string
+	registryUsername string
+	registryPassword string
 	// Merge base image layers control
 	mergeBaseImageTopLayer bool
-	// GC
-	gcContainerMap map[string]struct{}
-	gcImageMap     map[string]struct{}
-	gcInterval     time.Duration
 }
 
 // NewCommitter new a CommitterImpl with registry configuration
@@ -93,26 +86,19 @@ func NewCommitter(registryAddr, registryUsername, registryPassword string, merge
 	}
 
 	// create Containerd client
-	containerdClient, err := client.NewWithConn(conn, client.WithDefaultNamespace(DefaultNamespace))
+	containerdClient, err := containerd.NewWithConn(conn, containerd.WithDefaultNamespace(DefaultNamespace))
 	if err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("failed to create containerd client: %v", err)
 	}
 
-	// create CRI client
-	runtimeServiceClient := runtimeapi.NewRuntimeServiceClient(conn)
-
 	return &CommitterImpl{
-		runtimeServiceClient:   runtimeServiceClient,
 		containerdClient:       containerdClient,
 		conn:                   conn,
 		globalOptions:          NewGlobalOptionConfig(),
 		registryAddr:           registryAddr,
 		registryUsername:       registryUsername,
 		registryPassword:       registryPassword,
-		gcContainerMap:         make(map[string]struct{}),
-		gcImageMap:             make(map[string]struct{}),
-		gcInterval:             DefaultGcInterval,
 		mergeBaseImageTopLayer: merge,
 	}, nil
 }
@@ -216,7 +202,7 @@ func (c *CommitterImpl) DeleteContainer(ctx context.Context, containerName strin
 
 		// delete task
 		log.Printf("Deleting task...")
-		_, err = task.Delete(ctx, client.WithProcessKill)
+		_, err = task.Delete(ctx, containerd.WithProcessKill)
 		if err != nil {
 			log.Printf("Warning: failed to delete task: %v", err)
 		} else {
@@ -225,7 +211,7 @@ func (c *CommitterImpl) DeleteContainer(ctx context.Context, containerName strin
 	}
 
 	// delete container (include snapshot)
-	err = container.Delete(ctx, client.WithSnapshotCleanup)
+	err = container.Delete(ctx, containerd.WithSnapshotCleanup)
 	if err != nil {
 		return fmt.Errorf("failed to delete container: %v", err)
 	}
@@ -257,13 +243,13 @@ func (c *CommitterImpl) SetLvRemovable(ctx context.Context, containerID string, 
 }
 
 // RemoveContainer remove container
-func (c *CommitterImpl) RemoveContainer(ctx context.Context, containerID string) error {
+func (c *CommitterImpl) RemoveContainer(ctx context.Context, containerNames []string) error {
 	// check containerID is not empty
-	if containerID == "" {
-		return fmt.Errorf("[RemoveContainer]containerID is empty")
+	if len(containerNames) == 0 {
+		return fmt.Errorf("[RemoveContainer]containerNames is empty")
 	}
 
-	fmt.Println("========>>>> remove container", containerID)
+	fmt.Println("========>>>> remove container", containerNames)
 	ctx = namespaces.WithNamespace(ctx, DefaultNamespace)
 
 	// check connection status, if connection is bad, try to reconnect
@@ -281,7 +267,7 @@ func (c *CommitterImpl) RemoveContainer(ctx context.Context, containerID string)
 		Volumes:  false,
 		GOptions: *global,
 	}
-	err := container.Remove(ctx, c.containerdClient, []string{containerID}, opt)
+	err := container.Remove(ctx, c.containerdClient, containerNames, opt)
 	if err != nil {
 		return fmt.Errorf("failed to remove container: %v", err)
 	}
@@ -365,7 +351,7 @@ func (c *CommitterImpl) Push(ctx context.Context, imageName string) error {
 
 	// push image
 	err = c.containerdClient.Push(ctx, imageName, imageRef.Target(),
-		client.WithResolver(resolver),
+		containerd.WithResolver(resolver),
 	)
 	if err != nil {
 		log.Printf("failed to push image: %s, err: %v\n", imageName, err)
@@ -376,8 +362,8 @@ func (c *CommitterImpl) Push(ctx context.Context, imageName string) error {
 }
 
 // RemoveImage remove image
-func (c *CommitterImpl) RemoveImage(ctx context.Context, imageName string, force bool, async bool) error {
-	fmt.Println("========>>>> remove image", imageName)
+func (c *CommitterImpl) RemoveImage(ctx context.Context, imageNames []string, force bool, async bool) error {
+	fmt.Println("========>>>> remove image", imageNames)
 	ctx = namespaces.WithNamespace(ctx, DefaultNamespace)
 
 	// check connection status, if connection is bad, try to reconnect
@@ -395,80 +381,7 @@ func (c *CommitterImpl) RemoveImage(ctx context.Context, imageName string, force
 		Force:    force,
 		Async:    async,
 	}
-	return image.Remove(ctx, c.containerdClient, []string{imageName}, opt)
-}
-
-// MarkForGC mark container and image for GC
-func (c *CommitterImpl) MarkForGC(containerID string, imageID string) {
-	c.gcContainerMap[containerID] = struct{}{}
-	c.gcImageMap[imageID] = struct{}{}
-}
-
-// GC start periodic GC
-func (c *CommitterImpl) GC(ctx context.Context) error {
-	ticker := time.NewTicker(c.gcInterval)
-	go func() {
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				log.Printf("Starting periodic GC at: %v", time.Now())
-				if err := c.normalGC(ctx); err != nil {
-					log.Printf("Failed to GC, err: %v", err)
-				}
-			}
-		}
-	}()
-	return nil
-}
-
-// normalGC gc container and image
-func (c *CommitterImpl) normalGC(ctx context.Context) error {
-	log.Printf("Starting normal GC in namespace: %s", DefaultNamespace)
-	ctx = namespaces.WithNamespace(ctx, DefaultNamespace)
-	// get all container in namespace
-	containers, err := c.containerdClient.Containers(ctx)
-	if err != nil {
-		log.Printf("Failed to get containers, err: %v", err)
-		return err
-	}
-
-	// gc container
-	for _, container := range containers {
-		if _, ok := c.gcContainerMap[container.ID()]; ok {
-			err = c.RemoveContainer(ctx, container.ID())
-			if err != nil {
-				log.Printf("Failed to remove container %s, err: %v", container.ID(), err)
-			}
-		}
-	}
-
-	// clear gcContainerMap
-	c.gcContainerMap = make(map[string]struct{})
-
-	// get all image in namespace
-	images, err := c.containerdClient.ListImages(ctx)
-	if err != nil {
-		log.Printf("Failed to get images, err: %v", err)
-		return err
-	}
-
-	// gc image
-	for _, image := range images {
-		if _, ok := c.gcImageMap[image.Name()]; ok {
-			err = c.RemoveImage(ctx, image.Name(), false, false)
-			if err != nil {
-				log.Printf("Failed to remove image %s, err: %v", image.Name(), err)
-			}
-		}
-	}
-
-	// clear gcImageMap
-	c.gcImageMap = make(map[string]struct{})
-
-	return nil
+	return image.Remove(ctx, c.containerdClient, imageNames, opt)
 }
 
 // InitializeGC initialize force GC
@@ -494,12 +407,14 @@ func (c *CommitterImpl) forceGC(ctx context.Context) error {
 	}
 
 	// gc container
+	containerNames := make([]string, 0)
 	for _, container := range containers {
-		if err := c.RemoveContainer(ctx, container.ID()); err != nil {
-			log.Printf("Failed to remove container %s, err: %v", container.ID(), err)
-		}
+		containerNames = append(containerNames, container.ID())
 	}
-	c.gcContainerMap = make(map[string]struct{})
+	if err := c.RemoveContainer(ctx, containerNames); err != nil {
+		log.Printf("Failed to remove containers, err: %v", err)
+		return err
+	}
 
 	// gc image
 	images, err := c.containerdClient.ListImages(ctx)
@@ -507,12 +422,15 @@ func (c *CommitterImpl) forceGC(ctx context.Context) error {
 		log.Printf("Failed to get images, err: %v", err)
 		return err
 	}
+	imageNames := make([]string, 0)
 	for _, image := range images {
-		if err := c.RemoveImage(ctx, image.Name(), false, false); err != nil {
-			log.Printf("Failed to remove image %s, err: %v", image.Name(), err)
-		}
+		imageNames = append(imageNames, image.Name())
 	}
-	c.gcImageMap = make(map[string]struct{})
+
+	if err := c.RemoveImage(ctx, imageNames, false, true); err != nil {
+		log.Printf("Failed to remove images, err: %v", err)
+		return err
+	}
 	return nil
 }
 
@@ -637,18 +555,14 @@ func (c *CommitterImpl) Reconnect(ctx context.Context) error {
 	}
 
 	// recreate containerd client
-	containerdClient, err := client.NewWithConn(conn, client.WithDefaultNamespace(DefaultNamespace))
+	containerdClient, err := containerd.NewWithConn(conn, containerd.WithDefaultNamespace(DefaultNamespace))
 	if err != nil {
 		conn.Close()
 		return fmt.Errorf("failed to recreate containerd client: %v", err)
 	}
 
-	// recreate CRI client
-	runtimeServiceClient := runtimeapi.NewRuntimeServiceClient(conn)
-
 	// update instance
 	c.containerdClient = containerdClient
-	c.runtimeServiceClient = runtimeServiceClient
 	c.conn = conn
 
 	log.Printf("Successfully reconnected to containerd")
