@@ -8,31 +8,31 @@ import (
 	"strings"
 	"time"
 
+	containerd "github.com/containerd/containerd/v2/client"
 	"github.com/containerd/containerd/v2/core/remotes"
 	"github.com/containerd/containerd/v2/core/remotes/docker"
 	"github.com/containerd/containerd/v2/core/remotes/docker/config"
 	"github.com/containerd/containerd/v2/core/snapshots"
 	"github.com/containerd/containerd/v2/pkg/namespaces"
+
 	"github.com/containerd/nerdctl/v2/pkg/api/types"
 	"github.com/containerd/nerdctl/v2/pkg/cmd/container"
 	"github.com/containerd/nerdctl/v2/pkg/cmd/image"
 	"github.com/containerd/nerdctl/v2/pkg/cmd/login"
 	"github.com/containerd/nerdctl/v2/pkg/containerutil"
+	ncdefaults "github.com/containerd/nerdctl/v2/pkg/defaults"
+	"github.com/labring/sealos/controllers/devbox/api/v1alpha2"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-
-	containerd "github.com/containerd/containerd/v2/client"
-	ncdefaults "github.com/containerd/nerdctl/v2/pkg/defaults"
-	"github.com/labring/sealos/controllers/devbox/api/v1alpha2"
 )
 
 type Committer interface {
 	CreateContainer(ctx context.Context, devboxName string, contentID string, baseImage string) (string, error)
 	Commit(ctx context.Context, devboxName string, contentID string, baseImage string, commitImage string) (string, error)
 	Push(ctx context.Context, imageName string) error
-	RemoveImage(ctx context.Context, imageNames []string, force bool, async bool) error
-	RemoveContainer(ctx context.Context, containerNames []string) error
+	RemoveImages(ctx context.Context, imageNames []string, force bool, async bool) error
+	RemoveContainers(ctx context.Context, containerNames []string) error
 	InitializeGC(ctx context.Context) error
 	SetLvRemovable(ctx context.Context, containerID string, contentID string) error
 }
@@ -243,10 +243,9 @@ func (c *CommitterImpl) SetLvRemovable(ctx context.Context, containerID string, 
 }
 
 // RemoveContainer remove container
-func (c *CommitterImpl) RemoveContainer(ctx context.Context, containerNames []string) error {
-	// check containerID is not empty
+func (c *CommitterImpl) RemoveContainers(ctx context.Context, containerNames []string) error {
 	if len(containerNames) == 0 {
-		return fmt.Errorf("[RemoveContainer]containerNames is empty")
+		return fmt.Errorf("[RemoveContainers]containerNames is empty")
 	}
 
 	fmt.Println("========>>>> remove container", containerNames)
@@ -263,7 +262,7 @@ func (c *CommitterImpl) RemoveContainer(ctx context.Context, containerNames []st
 	global := NewGlobalOptionConfig()
 	opt := types.ContainerRemoveOptions{
 		Stdout:   io.Discard,
-		Force:    false,
+		Force:    DefaultRemoveContainerForce,
 		Volumes:  false,
 		GOptions: *global,
 	}
@@ -362,9 +361,9 @@ func (c *CommitterImpl) Push(ctx context.Context, imageName string) error {
 }
 
 // RemoveImage remove image
-func (c *CommitterImpl) RemoveImage(ctx context.Context, imageNames []string, force bool, async bool) error {
+func (c *CommitterImpl) RemoveImages(ctx context.Context, imageNames []string, force bool, async bool) error {
 	if len(imageNames) == 0 {
-		return fmt.Errorf("[RemoveImage]imageNames is empty")
+		return fmt.Errorf("[RemoveImages]imageNames is empty")
 	}
 	fmt.Println("========>>>> remove image", imageNames)
 	ctx = namespaces.WithNamespace(ctx, DefaultNamespace)
@@ -415,7 +414,7 @@ func (c *CommitterImpl) forceGC(ctx context.Context) error {
 		containerNames = append(containerNames, container.ID())
 	}
 	if len(containerNames) > 0 {
-		if err := c.RemoveContainer(ctx, containerNames); err != nil {
+		if err := c.RemoveContainers(ctx, containerNames); err != nil {
 			log.Printf("Failed to remove containers, err: %v", err)
 			return err
 		}
@@ -432,7 +431,7 @@ func (c *CommitterImpl) forceGC(ctx context.Context) error {
 		imageNames = append(imageNames, image.Name())
 	}
 	if len(imageNames) > 0 {
-		if err := c.RemoveImage(ctx, imageNames, false, true); err != nil {
+		if err := c.RemoveImages(ctx, imageNames, DefaultRemoveImageForce, DefaultRemoveImageAsync); err != nil {
 			log.Printf("Failed to remove images, err: %v", err)
 			return err
 		}

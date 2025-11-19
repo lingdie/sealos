@@ -127,7 +127,7 @@ func TestRemoveContainer(t *testing.T) {
 	fmt.Printf("=== Total %d containers ===\n", len(containers))
 
 	// delete container
-	err = committer.(*CommitterImpl).RemoveContainer(ctx, []string{containerID})
+	err = committer.(*CommitterImpl).RemoveContainers(ctx, []string{containerID})
 	assert.NoError(t, err)
 
 	containers, err = committer.(*CommitterImpl).containerdClient.Containers(ctx)
@@ -196,7 +196,7 @@ func TestConcurrentOperations(t *testing.T) {
 
 	// delete containers
 	for _, containerID := range containers {
-		err := committer.(*CommitterImpl).RemoveContainer(ctx, []string{containerID})
+		err := committer.(*CommitterImpl).RemoveContainers(ctx, []string{containerID})
 		if err != nil {
 			t.Logf("Warning: failed to delete container %s: %v", containerID, err)
 		}
@@ -266,7 +266,7 @@ func TestConnectionManagement(t *testing.T) {
 	assert.NotEmpty(t, containerID)
 
 	// delete container
-	err = committer.(*CommitterImpl).RemoveContainer(ctx, []string{containerID})
+	err = committer.(*CommitterImpl).RemoveContainers(ctx, []string{containerID})
 	assert.NoError(t, err)
 
 	// test reconnect
@@ -282,7 +282,7 @@ func TestConnectionManagement(t *testing.T) {
 	err = committer.(*CommitterImpl).CheckConnection(ctx)
 	assert.NoError(t, err)
 
-	err = committer.(*CommitterImpl).RemoveContainer(ctx, []string{containerID})
+	err = committer.(*CommitterImpl).RemoveContainers(ctx, []string{containerID})
 	assert.NoError(t, err)
 
 	// test connection check again
@@ -335,7 +335,7 @@ func TestPushToDockerHub(t *testing.T) {
 	}
 
 	// remove image
-	err = committer.RemoveImage(ctx, []string{testImageName}, false, false)
+	err = committer.RemoveImages(ctx, []string{testImageName}, false, false)
 	assert.NoError(t, err)
 
 	// verify image is deleted
@@ -344,7 +344,7 @@ func TestPushToDockerHub(t *testing.T) {
 	fmt.Println("can not find image:", testImageName)
 
 	// remove container
-	err = committer.(*CommitterImpl).RemoveContainer(ctx, []string{containerID})
+	err = committer.(*CommitterImpl).RemoveContainers(ctx, []string{containerID})
 	assert.NoError(t, err)
 
 	// verify container is deleted
@@ -410,7 +410,7 @@ func TestRemoveImage(t *testing.T) {
 	// assert.NoError(t, err)
 
 	// remove image
-	err = committer.(*CommitterImpl).RemoveImage(ctx, []string{imageName}, false, false)
+	err = committer.(*CommitterImpl).RemoveImages(ctx, []string{imageName}, false, false)
 	assert.NoError(t, err)
 
 	// verify image is deleted
@@ -433,7 +433,7 @@ func TestAtomicLabels(t *testing.T) {
 
 	// ensure cleanup container after test
 	defer func() {
-		err := committer.RemoveContainer(ctx, []string{containerID})
+		err := committer.RemoveContainers(ctx, []string{containerID})
 		if err != nil {
 			fmt.Printf("Failed to cleanup container: %v", err)
 		}
@@ -572,7 +572,7 @@ func TestRemoveImagePerformance(t *testing.T) {
 		fmt.Printf("[%d/%d] remove image: %s (%.2f MB)\n", i+1, len(images), imageName, sizeMB)
 
 		start := time.Now()
-		err := committer.RemoveImage(ctx, []string{imageName}, true, false)
+		err := committer.RemoveImages(ctx, []string{imageName}, true, false)
 		duration := time.Since(start)
 
 		result := RemoveResult{
