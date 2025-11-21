@@ -270,7 +270,7 @@ func (r *DevboxReconciler) syncSecret(ctx context.Context, devbox *devboxv1alpha
 		ObjectMeta: objectMeta,
 	}
 
-	err := r.Get(ctx, client.ObjectKey{Namespace: devbox.Namespace, Name: devbox.Name}, devboxSecret)
+	err := r.Get(ctx, client.ObjectKeyFromObject(devboxSecret), devboxSecret)
 	if err == nil {
 		// Secret already exists, update with retry
 		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -291,6 +291,8 @@ func (r *DevboxReconciler) syncSecret(ctx context.Context, devbox *devboxv1alpha
 			if _, ok := latestSecret.Data["SEALOS_DEVBOX_AUTHORIZED_KEYS"]; !ok {
 				latestSecret.Data["SEALOS_DEVBOX_AUTHORIZED_KEYS"] = latestSecret.Data["SEALOS_DEVBOX_PUBLIC_KEY"]
 			}
+			// generate SEALOS_DEVBOX_ENV_PROFILE
+			latestSecret.Data["SEALOS_DEVBOX_ENV_PROFILE"] = helper.GenerateEnvProfile(devbox)
 			return r.Update(ctx, latestSecret)
 		})
 		return err
