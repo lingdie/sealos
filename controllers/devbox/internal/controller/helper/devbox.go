@@ -177,6 +177,11 @@ func GenerateSSHVolumeMounts() []corev1.VolumeMount {
 			SubPath:   "id.pub",
 			ReadOnly:  true,
 		},
+	}
+}
+
+func GenerateEnvProfileVolumeMount() []corev1.VolumeMount {
+	return []corev1.VolumeMount{
 		{
 			Name:      "devbox-env-profile",
 			MountPath: "/etc/profile.d/env-profile.sh",
@@ -202,6 +207,20 @@ func GenerateSSHVolume(devbox *devboxv1alpha2.Devbox) corev1.Volume {
 						Key:  "SEALOS_DEVBOX_AUTHORIZED_KEYS",
 						Path: "authorized_keys",
 					},
+				},
+				DefaultMode: ptr.To(int32(420)),
+			},
+		},
+	}
+}
+
+func GenerateEnvProfileVolume(devbox *devboxv1alpha2.Devbox) corev1.Volume {
+	return corev1.Volume{
+		Name: "devbox-env-profile",
+		VolumeSource: corev1.VolumeSource{
+			Secret: &corev1.SecretVolumeSource{
+				SecretName: devbox.Name,
+				Items: []corev1.KeyToPath{
 					{
 						Key:  "SEALOS_DEVBOX_ENV_PROFILE",
 						Path: "env-profile.sh",

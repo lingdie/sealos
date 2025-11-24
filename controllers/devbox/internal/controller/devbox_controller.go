@@ -862,9 +862,11 @@ func (r *DevboxReconciler) generateDevboxPod(devbox *devboxv1alpha2.Devbox, opts
 
 	volumes := devbox.Spec.Config.Volumes
 	volumes = append(volumes, helper.GenerateSSHVolume(devbox))
+	volumes = append(volumes, helper.GenerateEnvProfileVolume(devbox))
 
 	volumeMounts := devbox.Spec.Config.VolumeMounts
 	volumeMounts = append(volumeMounts, helper.GenerateSSHVolumeMounts()...)
+	volumeMounts = append(volumeMounts, helper.GenerateEnvProfileVolumeMount()...)
 
 	containers := []corev1.Container{
 		{
