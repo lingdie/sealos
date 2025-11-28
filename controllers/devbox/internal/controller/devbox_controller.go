@@ -140,8 +140,6 @@ func (r *DevboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, nil
 	}
 
-	// init devbox status network type
-	devbox.Status.Network.Type = devbox.Spec.NetworkSpec.Type
 	// init devbox status content id
 	if devbox.Status.ContentID == "" {
 		devbox.Status.ContentID = uuid.New().String()
@@ -403,7 +401,15 @@ func (r *DevboxReconciler) syncNetwork(ctx context.Context, devbox *devboxv1alph
 			return err
 		}
 	}
-	return nil
+	// do update devbox status network type
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		latestDevbox := &devboxv1alpha2.Devbox{}
+		if err := r.Get(ctx, client.ObjectKeyFromObject(devbox), latestDevbox); err != nil {
+			return err
+		}
+		latestDevbox.Status.Network.Type = devbox.Spec.NetworkSpec.Type
+		return r.Status().Update(ctx, latestDevbox)
+	})
 }
 
 func (r *DevboxReconciler) syncTailnet(ctx context.Context, devbox *devboxv1alpha2.Devbox, recLabels map[string]string) error {
@@ -461,14 +467,10 @@ func (r *DevboxReconciler) syncNodeportService(ctx context.Context, devbox *devb
 			Labels:    recLabels,
 		},
 	}
-	desiredNodePort := devbox.Spec.NetworkSpec.Type == devboxv1alpha2.NetworkTypeNodePort
-	currentNodePort := devbox.Status.Network.Type == devboxv1alpha2.NetworkTypeNodePort
 
+	desiredNodePort := devbox.Spec.NetworkSpec.Type == devboxv1alpha2.NetworkTypeNodePort
 	if !desiredNodePort {
-		if currentNodePort {
-			return r.deleteNodeport(ctx, devbox, service, devbox.Spec.NetworkSpec.Type)
-		}
-		return nil
+		return r.deleteNodeport(ctx, devbox, service)
 	}
 
 	var servicePorts []corev1.ServicePort
@@ -499,7 +501,7 @@ func (r *DevboxReconciler) syncNodeportService(ctx context.Context, devbox *devb
 
 	switch devbox.Spec.State {
 	case devboxv1alpha2.DevboxStateShutdown:
-		return r.deleteNodeport(ctx, devbox, service, devboxv1alpha2.NetworkTypeNodePort)
+		return r.deleteNodeport(ctx, devbox, service)
 	case devboxv1alpha2.DevboxStateRunning, devboxv1alpha2.DevboxStatePaused, devboxv1alpha2.DevboxStateStopped:
 		if _, err := controllerutil.CreateOrUpdate(ctx, r.Client, service, func() error {
 			// only update some specific fields
@@ -554,7 +556,9 @@ func (r *DevboxReconciler) syncNodeportService(ctx context.Context, devbox *devb
 	return nil
 }
 
-func (r *DevboxReconciler) deleteNodeport(ctx context.Context, devbox *devboxv1alpha2.Devbox, service *corev1.Service, nextType devboxv1alpha2.NetworkType) error {
+func (r *DevboxReconciler) deleteNodeport(ctx context.Context, devbox *devboxv1alpha2.Devbox, service *corev1.Service) error {
+	logger := log.FromContext(ctx)
+	logger.Info("deleting nodeport service for devbox", "devbox", devbox.Name)
 	if err := r.Client.Delete(ctx, service); err != nil && !errors.IsNotFound(err) {
 		return err
 	}
@@ -564,7 +568,6 @@ func (r *DevboxReconciler) deleteNodeport(ctx context.Context, devbox *devboxv1a
 		if err := r.Get(ctx, client.ObjectKeyFromObject(devbox), latestDevbox); err != nil {
 			return err
 		}
-		latestDevbox.Status.Network.Type = nextType
 		latestDevbox.Status.Network.NodePort = 0
 		return r.Status().Update(ctx, latestDevbox)
 	})
