@@ -160,7 +160,7 @@ func GenerateEnvProfile(devbox *devboxv1alpha2.Devbox, devboxJWTSecret []byte) [
 	for _, env := range devbox.Spec.Config.Env {
 		envProfile = append(envProfile, []byte(fmt.Sprintf("export %s=\"%s\"\n", env.Name, env.Value))...)
 	}
-	envProfile = append(envProfile, []byte(fmt.Sprintf("export SEALOS_DEVBOX_JWT_SECRET=\"%s\"\n", devboxJWTSecret))...)
+	envProfile = append(envProfile, []byte(fmt.Sprintf("export DEVBOX_JWT_SECRET=\"%s\"\n", devboxJWTSecret))...)
 	return envProfile
 }
 

@@ -950,7 +950,7 @@ func (r *DevboxReconciler) generateDevboxPod(devbox *devboxv1alpha2.Devbox, opts
 
 	envs := devbox.Spec.Config.Env
 	envs = append(envs, corev1.EnvVar{
-		Name: "SEALOS_DEVBOX_JWT_SECRET",
+		Name: "DEVBOX_JWT_SECRET",
 		ValueFrom: &corev1.EnvVarSource{
 			SecretKeyRef: &corev1.SecretKeySelector{
 				Key: "SEALOS_DEVBOX_JWT_SECRET",
