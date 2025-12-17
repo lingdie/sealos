@@ -60,6 +60,9 @@ type DevboxReconciler struct {
 	DevboxNodeLabel     string
 	NodeName            string
 
+	StartupConfigMapName      string
+	StartupConfigMapNamespace string
+
 	RequestRate      resource.RequestRate
 	EphemeralStorage resource.EphemeralStorage
 
