@@ -85,11 +85,24 @@ func TestHandleReturnsRuntimeClassPatch(t *testing.T) {
 	if len(resp.Patches) != 2 {
 		t.Fatalf("expected one runtimeClassName patch and one annotation patch, got %d: %+v", len(resp.Patches), resp.Patches)
 	}
-	if resp.Patches[0].Operation != "add" || resp.Patches[0].Path != "/spec/runtimeClassName" {
-		t.Fatalf("unexpected runtimeClassName patch: %+v", resp.Patches[0])
+	var runtimeClassPatched, runtimeHandlerAnnotated bool
+	for _, patch := range resp.Patches {
+		if patch.Operation != "add" {
+			continue
+		}
+		switch patch.Path {
+		case "/spec/runtimeClassName":
+			runtimeClassPatched = true
+		case "/metadata/annotations":
+			annotations, ok := patch.Value.(map[string]interface{})
+			runtimeHandlerAnnotated = ok && annotations[runtimeHandlerAnnotationKey] == stargzRuntimeHandler
+		}
 	}
-	if resp.Patches[1].Operation != "add" || resp.Patches[1].Path != "/metadata/annotations" {
-		t.Fatalf("unexpected annotation patch: %+v", resp.Patches[1])
+	if !runtimeClassPatched {
+		t.Fatalf("runtimeClassName patch not found: %+v", resp.Patches)
+	}
+	if !runtimeHandlerAnnotated {
+		t.Fatalf("runtime-handler annotation patch not found: %+v", resp.Patches)
 	}
 }
 
