@@ -82,11 +82,14 @@ func TestHandleReturnsRuntimeClassPatch(t *testing.T) {
 	if !resp.Allowed {
 		t.Fatalf("expected allowed response: %+v", resp.Result)
 	}
-	if len(resp.Patches) != 1 {
-		t.Fatalf("expected one patch, got %d: %+v", len(resp.Patches), resp.Patches)
+	if len(resp.Patches) != 2 {
+		t.Fatalf("expected one runtimeClassName patch and one annotation patch, got %d: %+v", len(resp.Patches), resp.Patches)
 	}
 	if resp.Patches[0].Operation != "add" || resp.Patches[0].Path != "/spec/runtimeClassName" {
-		t.Fatalf("unexpected patch: %+v", resp.Patches[0])
+		t.Fatalf("unexpected runtimeClassName patch: %+v", resp.Patches[0])
+	}
+	if resp.Patches[1].Operation != "add" || resp.Patches[1].Path != "/metadata/annotations" {
+		t.Fatalf("unexpected annotation patch: %+v", resp.Patches[1])
 	}
 }
 
